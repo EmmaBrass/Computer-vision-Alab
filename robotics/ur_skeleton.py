@@ -191,26 +191,97 @@ def _read_joints_file(path: Path) -> Optional[tuple[np.ndarray, str]]:
     return np.asarray(q[:6], dtype=np.float64), model
 
 
-def _read_joints_rtde(host: str) -> Optional[tuple[np.ndarray, str]]:
+def _rtde_receive(host: str):
+    """Open one RTDE reader. Returns the interface, or None."""
     if not host:
         return None
     try:
         from ur_rtde import RTDEReceiveInterface  # type: ignore
 
-        rtde = RTDEReceiveInterface(host)
-        q = np.asarray(rtde.getActualQ(), dtype=np.float64)
-        rtde.disconnect()
-        return q.reshape(6), "ur5e"
+        return RTDEReceiveInterface(host)
     except Exception:
         pass
     try:
         import rtde_receive  # type: ignore
 
-        rtde = rtde_receive.RTDEReceiveInterface(host)
-        q = np.asarray(rtde.getActualQ(), dtype=np.float64)
-        return q.reshape(6), "ur5e"
+        return rtde_receive.RTDEReceiveInterface(host)
     except Exception:
         return None
+
+
+def _close_rtde(rtde) -> None:
+    disconnect = getattr(rtde, "disconnect", None)
+    if callable(disconnect):
+        try:
+            disconnect()
+        except Exception:
+            pass
+
+
+def _read_joints_rtde(host: str) -> Optional[tuple[np.ndarray, str]]:
+    rtde = _rtde_receive(host)
+    if rtde is None:
+        return None
+    try:
+        q = np.asarray(rtde.getActualQ(), dtype=np.float64).reshape(6)
+    except Exception:
+        _close_rtde(rtde)
+        return None
+    _close_rtde(rtde)
+    return q, "ur5e"
+
+
+def read_robot_tcp_mm(host: str) -> Optional[np.ndarray]:
+    """Tool position in the robot base, millimeters, from the controller.
+
+    This is ``getActualTCPPose`` (x, y, z). It is the pendant's Cartesian
+    number, not a pose recomputed here.
+    """
+    rtde = _rtde_receive(host)
+    if rtde is None:
+        return None
+    try:
+        pose = np.asarray(rtde.getActualTCPPose(), dtype=np.float64).reshape(-1)
+    except Exception:
+        _close_rtde(rtde)
+        return None
+    _close_rtde(rtde)
+    if pose.size < 3 or not np.isfinite(pose[:3]).all():
+        return None
+    return pose[:3] * 1000.0
+
+
+def robot_arm_points_mm(cfg: UrFkConfig | None = None) -> Optional[tuple[np.ndarray, str]]:
+    """Arm points in the vision base from the controller or ``ur_joints.json``.
+
+    Returns None for the offline mock pose so a mask is not drawn on a
+    pretend arm. The tool tip is the controller Cartesian pose when RTDE
+    answers. The other points are the reported joint angles placed on the
+    UR link model, which is only there so the mask can follow each tube.
+    """
+    cfg = cfg or load_fk_config()
+    q: Optional[np.ndarray] = None
+    source = ""
+    tcp_mm = None
+    if cfg.host:
+        got = _read_joints_rtde(cfg.host)
+        if got is not None:
+            q = got[0]
+            source = f"rtde:{cfg.host}"
+            tcp_mm = read_robot_tcp_mm(cfg.host)
+    if q is None:
+        filed = _read_joints_file(cfg.joints_path)
+        if filed is None:
+            return None
+        q, model = filed
+        source = f"file:{cfg.joints_path.name}"
+    else:
+        model = cfg.model or "ur5e"
+    pts = ur_base_to_vision_mm(fk_joint_positions_mm(q, model), cfg)
+    if tcp_mm is not None:
+        pts = np.array(pts, dtype=np.float64, copy=True)
+        pts[-1] = ur_base_to_vision_mm(tcp_mm.reshape(1, 3), cfg)[0]
+    return pts, source
 
 
 def load_joints(

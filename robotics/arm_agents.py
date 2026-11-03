@@ -252,6 +252,77 @@ def grab_dual_usb(*, seconds: float, interval_s: float = 0.35) -> dict[str, int]
 # ---------------------------------------------------------------------------
 
 
+def _pose_grey_band(width: int, height: int, cam: str) -> Optional[np.ndarray]:
+    """Pixels near the robot's 3D arm, projected into this camera.
+
+    None when the controller pose is missing or this camera has no solved pose.
+    The band replaces the old image-space chain that grew grey off blue blobs.
+    """
+    try:
+        from cell_frames import load_cell_frames
+        from ur_skeleton import robot_arm_points_mm
+        from vial_3d_model import Intrinsics, cam_to_pixel
+    except ImportError:
+        return None
+    posed = robot_arm_points_mm()
+    if posed is None:
+        return None
+    pts_mm, _source = posed
+    frames = load_cell_frames()
+    pose = frames.pose("cam1" if cam == "cam1" else "cam0")
+    if not bool(pose.ready):
+        return None
+    fx = float(frames.fx_px) if frames.fx_px > 1 else 0.5 * float(width)
+    k = Intrinsics(fx=fx, fy=fx, cx=0.5 * width, cy=0.5 * height)
+    rotation = np.asarray(pose.R, dtype=np.float64).reshape(3, 3)
+    translation = np.asarray(pose.t_mm, dtype=np.float64).reshape(3)
+    band = np.zeros((height, width), np.uint8)
+    pixels: list[tuple[int, int]] = []
+    for point in np.asarray(pts_mm, dtype=np.float64).reshape(-1, 3):
+        p_cam = rotation.T @ (point - translation)
+        uv = cam_to_pixel(p_cam, k)
+        if uv is None:
+            pixels.append((-1, -1))
+            continue
+        pixels.append((int(round(uv[0])), int(round(uv[1]))))
+    drawn = 0
+    for start, end in zip(pixels, pixels[1:]):
+        if start[0] < 0 or end[0] < 0:
+            continue
+        cv2.line(band, start, end, 255, thickness=max(24, int(0.035 * min(width, height))), lineType=cv2.LINE_AA)
+        drawn += 1
+    if drawn == 0:
+        return None
+    radius = 21 if cam == "cam0" else 15
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (radius, radius))
+    return cv2.dilate(band, kernel, iterations=1)
+
+
+def _box_from_grey(grey: np.ndarray, *, min_side: int, pad: int) -> Optional[tuple[int, int, int, int]]:
+    height, width = grey.shape[:2]
+    contours, _ = cv2.findContours(grey, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return None
+    x1, y1, x2, y2 = width, height, 0, 0
+    kept = 0
+    for contour in contours:
+        if cv2.contourArea(contour) < 400:
+            continue
+        x, y, w, h = cv2.boundingRect(contour)
+        x1, y1 = min(x1, x), min(y1, y)
+        x2, y2 = max(x2, x + w), max(y2, y + h)
+        kept += 1
+    if kept == 0 or x2 <= x1 or y2 <= y1:
+        return None
+    x = max(0, x1 - pad)
+    y = max(0, y1 - pad)
+    w = min(width - x, (x2 - x1) + 2 * pad)
+    h = min(height - y, (y2 - y1) + 2 * pad)
+    if w < min_side or h < min_side or w * h > 0.62 * width * height:
+        return None
+    return int(x), int(y), int(w), int(h)
+
+
 def _arm_color_box(
     bgr: np.ndarray,
     *,
@@ -260,7 +331,12 @@ def _arm_color_box(
     pad: int = 36,
     cam: str = "",
 ) -> Optional[tuple[int, int, int, int]]:
-    """Propose an arm box from high-saturation cyan UR joint caps + nearby grey."""
+    """Propose an arm box from grey metal on the robot's projected 3D pose.
+
+    When the controller pose and a solved camera are both available, grey
+    pixels are kept only along that projected arm. The image-space blue
+    chain remains only for frames with no robot pose.
+    """
     hs, ws = bgr.shape[:2]
     # cam0 needs a fuller silhouette (base + links); cam1 is tighter on the right.
     cluster_r = 280 if cam == "cam0" else 200
@@ -268,6 +344,16 @@ def _arm_color_box(
     grey_iters = 3 if cam == "cam0" else 2
     pad_use = pad + (16 if cam == "cam0" else 0)
     hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
+    grayish = cv2.inRange(hsv, (0, 0, 50), (179, 55, 210))
+    grayish = cv2.morphologyEx(grayish, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+    pose_band = _pose_grey_band(ws, hs, cam)
+    if pose_band is not None:
+        return _box_from_grey(
+            cv2.bitwise_and(grayish, pose_band),
+            min_side=min_side,
+            pad=pad_use,
+        )
+
     # Tight cyan — lab has lots of low-S blue-ish clutter (pipes, plastics).
     blue = cv2.inRange(hsv, (90, 60, 70), (112, 255, 255))
     blue = cv2.morphologyEx(blue, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
@@ -280,9 +366,6 @@ def _arm_color_box(
         blue_area = int(cv2.countNonZero(blue))
         if blue_area < min_blue_area:
             return None
-
-    grayish = cv2.inRange(hsv, (0, 0, 50), (179, 55, 210))
-    grayish = cv2.morphologyEx(grayish, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
 
     cnts, _ = cv2.findContours(blue, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not cnts:
