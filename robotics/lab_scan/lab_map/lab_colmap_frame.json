@@ -1,0 +1,9 @@
+{
+ "frame": "COLMAP map frame, meters (walkthrough #2, same as maploc poses)",
+ "up": [
+  -0.04527553915977478,
+  -0.6651573181152344,
+  -0.7453293800354004
+ ],
+ "source": "lab_map/splat.ply via dataparser_transforms.json: p_m = R.T @ (p/scale - t)"
+}

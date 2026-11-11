@@ -4,9 +4,8 @@
   <name>orbbec_dual_sync</name>
   <version>0.1.0</version>
   <description>
-    Dual Orbbec RGB-D publishers plus ApproximateTime synchronizer for
-    multi-cam time-aligned vial detection. Does not change YOLO accuracy;
-    only aligns frames so agree/miss rates can be compared vs unsynced dual.
+    Dual Orbbec RGB-D publishers plus dual-view rack / UR arm overlay.
+    Streams color, depth, and camera_info for online pose.
   </description>
   <maintainer email="devnull@example.com">Jessica Camera</maintainer>
   <license>MIT</license>

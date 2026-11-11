@@ -9,7 +9,7 @@ Agents:
   TrainAgent   — ultralytics YOLOv8n fine-tune -> arm_state/runs/arm_detect/
 
 Examples (use Pixi/ROS python so rclpy works for --source ros):
-  cd C:\\Users\\Ceder-ALAB\\Desktop\\Jessica\\Jessica\\ros2_ws
+  cd D:\\Jessica\\Jessica\\ros2_ws
   call _ros_env.cmd && call install\\setup.bat
   set PYTHONPATH=..\\robotics;%PYTHONPATH%
   set KMP_DUPLICATE_LIB_OK=TRUE
@@ -261,7 +261,7 @@ def _pose_grey_band(width: int, height: int, cam: str) -> Optional[np.ndarray]:
     try:
         from cell_frames import load_cell_frames
         from ur_skeleton import robot_arm_points_mm
-        from vial_3d_model import Intrinsics, cam_to_pixel
+        from cam_geometry import Intrinsics, cam_to_pixel
     except ImportError:
         return None
     posed = robot_arm_points_mm()

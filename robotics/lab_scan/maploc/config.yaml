@@ -1,0 +1,74 @@
+# Paths and gates for localizing the fixed cameras in the walkthrough map.
+# The map frame is the COLMAP world frame, already in meters.
+# cam0 and cam1 are the fixed cameras. Do not copy the walkthrough fx/fy/cx/cy onto them.
+
+paths:
+  color_dir: "D:\\Jessica\\Jessica\\robotics\\lab_scan\\walkthrough_20261106_110839\\color"
+  depth_dir: "D:\\Jessica\\Jessica\\robotics\\lab_scan\\walkthrough_20261106_110839\\depth"
+  images_bin: "D:\\Jessica\\Jessica\\robotics\\lab_scan\\lab_map\\colmap\\sparse\\0\\images.bin"
+  points3d_bin: "D:\\Jessica\\Jessica\\robotics\\lab_scan\\lab_map\\colmap\\sparse\\0\\points3D.bin"
+  output_dir: "D:\\Jessica\\Jessica\\robotics\\lab_scan\\maploc\\out"
+
+walkthrough:
+  fx: 609.857
+  fy: 609.870
+  cx: 638.134
+  cy: 354.407
+  width: 1280
+  height: 720
+
+localize:
+  top_k: 10              # frames whose matches feed PnP (after re-ranking)
+  shortlist_k: 80        # frames kept from the fast retrieval pass, then re-ranked by verified matches
+  ratio: 0.8
+  mutual_matches: false  # true = old behaviour (strict, too few matches for the high cameras)
+  verify_fundamental_px: 3.0
+  pnp_iterations: 10000
+  retrieve_max_width: 640
+  ransac_reproj_px: 4.0
+  min_inliers: 50
+  max_median_reproj_px: 3.0
+  depth_max_m: 6.0
+  depth_window_spread_m: 0.05
+  sift_features_retrieve: 1500
+  sift_features_match: 4000
+
+fusion:
+  gate_m: 0.10
+  track_gate_m: 0.15
+
+# Used only when a camera has no depth and a detection has no depth_m.
+# Plane is n·X + d = 0 in the COLMAP map frame. Leave disabled until measured.
+plane:
+  enabled: false
+  normal: [0.0, 0.0, 1.0]
+  d: 0.0
+
+# Color intrinsics are the shared CAP_OBSENSOR values at 640x480.
+# pyorbbecsdk get_camera_param() reports a slightly different pinhole per device
+# (cam0 fx 366.861, cam1 fx 367.628). Distortion is Brown-Conrady from that call;
+# k4, k5, k6 were 0. OpenCV order is k1, k2, p1, p2, k3.
+# Index 2, serial CP28563000NA, is the walkthrough camera. It is not listed here.
+cameras:
+  cam0:
+    index: 0
+    serial: CP2G8530008H
+    fx: 366.751
+    fy: 365.782
+    cx: 319.893
+    cy: 243.415
+    dist: [-0.028349952772259712, 0.03148368000984192, 0.00024795648641884327, 0.00009103000775212422, -0.011390543542802334]
+    width: 640
+    height: 480
+    has_depth: true
+  cam1:
+    index: 1
+    serial: CP285630005K
+    fx: 366.751
+    fy: 365.782
+    cx: 319.893
+    cy: 243.415
+    dist: [-0.0296829491853714, 0.03433774784207344, -0.00023562670685350895, 0.00015382125275209546, -0.012142515741288662]
+    width: 640
+    height: 480
+    has_depth: true

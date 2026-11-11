@@ -124,7 +124,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"ERROR: {exc}", file=sys.stderr)
         print(
             "If ROS dual sync is running, stop it first, or use:\n"
-            r"  cd C:\Users\Ceder-ALAB\Desktop\Jessica\Jessica\ros2_ws" "\n"
+            r"  cd D:\Jessica\Jessica\ros2_ws" "\n"
             r"  .\view_dual_cameras.cmd",
             file=sys.stderr,
         )

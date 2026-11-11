@@ -16,16 +16,14 @@ setup(
     zip_safe=True,
     maintainer="Jessica Camera",
     maintainer_email="devnull@example.com",
-    description="Dual Orbbec ApproximateTime sync + vial detect bridge",
+    description="Dual Orbbec publishers + dual-view rack/arm overlay",
     license="MIT",
     extras_require={"test": ["pytest"]},
     entry_points={
         "console_scripts": [
             "orbbec_camera_publisher = orbbec_dual_sync.camera_publisher:main",
-            "orbbec_sync_detect = orbbec_dual_sync.sync_detect_node:main",
             "orbbec_sync_forward = orbbec_dual_sync.sync_forward_node:main",
             "orbbec_rack_overlay = orbbec_dual_sync.rack_overlay_node:main",
-            "orbbec_furnace_overlay = orbbec_dual_sync.furnace_overlay_node:main",
             "orbbec_dual_view = orbbec_dual_sync.dual_view_node:main",
         ],
     },

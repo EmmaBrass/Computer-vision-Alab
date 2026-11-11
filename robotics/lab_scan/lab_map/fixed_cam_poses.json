@@ -1,0 +1,138 @@
+{
+  "frames": {
+    "colmap_map_frame_m": "COLMAP sparse/0 world axes in meters (walkthrough #2, scale already applied)",
+    "splat_frame": "nerfstudio dataparser frame; convert with lab_map_frame.json"
+  },
+  "convention": "c2w = camera-to-world 4x4, OpenCV camera axes (x right, y down, z forward)",
+  "images": {
+    "cam0": "gripper_shots/raw_cam0.png (Orbbec index 0, 640x480)",
+    "cam1": "gripper_shots/raw_cam1.png (Orbbec index 1, 640x480)"
+  },
+  "intrinsics_used": {
+    "width": 640,
+    "height": 480,
+    "fx": 366.751,
+    "fy": 365.782,
+    "cx": 319.893,
+    "cy": 243.415,
+    "distortion": "Brown-Conrady from pyorbbecsdk get_camera_param(); see config.yaml cameras.*.dist"
+  },
+  "source_map": "walkthrough2 / alab_walkthrough2_splat_20261106.zip",
+  "cameras": {
+    "cam0": {
+      "c2w_colmap_map_frame_m": [
+        [
+          0.9632316390178602,
+          0.25198778324269683,
+          0.09320389847746874,
+          0.018008048713354357
+        ],
+        [
+          -0.15494000181951192,
+          0.8043978414667816,
+          -0.5735309132729919,
+          0.7474928185990182
+        ],
+        [
+          -0.2194957982083855,
+          0.5380021094196695,
+          0.8138644388525952,
+          0.1381715176346246
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "pnp_inliers": 204,
+      "median_reproj_px": 1.7124197249003787,
+      "retrieved_frames": [
+        "000262.jpg",
+        "000244.jpg",
+        "000270.jpg",
+        "000254.jpg",
+        "000256.jpg",
+        "000269.jpg",
+        "000246.jpg",
+        "000267.jpg",
+        "000264.jpg",
+        "000282.jpg"
+      ]
+    },
+    "cam1": {
+      "c2w_colmap_map_frame_m": [
+        [
+          0.09005212163633282,
+          -0.41222883770583985,
+          0.9066189942597097,
+          -0.5824087084594505
+        ],
+        [
+          0.8246494717009023,
+          0.541285277397382,
+          0.1642056554941455,
+          -0.10754495455959867
+        ],
+        [
+          -0.5584298203106796,
+          0.7328558069883404,
+          0.38868818087414303,
+          0.7060060359158344
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "pnp_inliers": 65,
+      "median_reproj_px": 1.8066243799171648,
+      "retrieved_frames": [
+        "000807.jpg",
+        "000809.jpg",
+        "000455.jpg",
+        "000449.jpg",
+        "000428.jpg",
+        "000814.jpg",
+        "000804.jpg",
+        "000803.jpg",
+        "000823.jpg",
+        "000434.jpg"
+      ]
+    }
+  },
+  "cam0_to_cam1": {
+    "T_cam0_from_cam1": [
+      [
+        0.08154286122746113,
+        -0.6417973711852053,
+        0.7625266527293318,
+        -0.5704981538168101
+      ],
+      [
+        0.38560186822037623,
+        0.7258100478141756,
+        0.5696586466621392,
+        -0.533592058126506
+      ],
+      [
+        -0.9190549281777421,
+        0.24758010588846618,
+        0.3066628933543497,
+        0.8965697340249323
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "distance_m": 1.189,
+    "angle_deg": 86.7
+  },
+  "check": "Localized with maploc/localize.py against walkthrough #2 COLMAP (1030 frames)."
+}

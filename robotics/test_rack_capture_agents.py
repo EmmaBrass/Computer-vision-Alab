@@ -46,7 +46,7 @@ class RackCaptureAgentsTests(unittest.TestCase):
             )
 
     def test_no_yolo_import(self):
-        # Pipeline module must not pull ultralytics / vial YOLO runtime.
+        # Pipeline module must not pull ultralytics runtime.
         import rack_capture_agents as mod
 
         src = Path(mod.__file__).read_text(encoding="utf-8").lower()

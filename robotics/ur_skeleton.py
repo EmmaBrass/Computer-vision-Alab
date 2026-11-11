@@ -1,9 +1,13 @@
 """UR forward kinematics + joint-angle sources for stick-figure / crash assist.
 
 Joint sources (first that works):
-  1. Optional RTDE (``ur_rtde`` or ``rtde_receive``) when ``host`` is set
-  2. JSON file ``ur_joints.json`` (teach-pendant / external writer)
+  1. Teach-pendant realtime client interface (port 30003) when ``host`` is set —
+     same ``q`` / TCP Polyscope's 3D robot uses
+  2. JSON file ``ur_joints.json`` (manual / external writer)
   3. Mock zeros (draw at home) for offline overlay tests
+
+Kinematics for Jeeves: UR5e DH via ``Useful Validation Scripts/ur5e_kinematics``
+(matches teach-pad TCP within ~1 mm). Dashboard may say ``UR5``; do not use classic UR5.
 
     python -c "from ur_skeleton import fk_joint_positions_mm, load_joints; print(fk_joint_positions_mm(load_joints()[0]))"
 """
@@ -163,6 +167,69 @@ def fk_joint_positions_mm(q_rad: np.ndarray, model: str = "ur5e") -> np.ndarray:
     return pts
 
 
+# UR base is Z-up. Cam0's ur_base is the optical frame (X right, Y down, Z forward)
+# until a real mount rotation is saved. Identity R therefore graphs the arm on its side.
+R_UR_Z_UP_TO_CAM_Y_DOWN = np.array(
+    [
+        [0.0, -1.0, 0.0],
+        [0.0, 0.0, -1.0],
+        [1.0, 0.0, 0.0],
+    ],
+    dtype=np.float64,
+)
+
+
+# File example is an L. The validation viewer does not draw that L.
+# Its simulator starts at VIEWER_DEMO_Q (urp_viewer.ProgramSimulator).
+FILE_L_Q = np.array([0.0, -1.5708, 1.5708, -1.5708, -1.5708, 0.0], dtype=np.float64)
+# Photographed cell pose, used only while the teach pendant stream is down.
+PHOTO_Q = np.array([0.0, -2.618, 1.5708, 0.0, 0.0, 0.0], dtype=np.float64)
+PHOTO_YAW = -math.pi / 2
+# Live overlay heading. Encoder q stays locked. yaw spins the arm about
+# vertical before the mount; img_deg / img_scale seat that projection on the
+# photograph (upper arm up-right, forearm back along the arm). Joint 0 stays
+# on the pedestal anchor. Blues still only blend pixels 1:1.
+# Seating for uncalibrated draw only. cam1/cam2 = opposite high-down pair;
+# cam0 = separate side/close view (not 180 from the others).
+LIVE_VIEW_ALIGN = {
+    "cam0": {"yaw": math.radians(34.0), "img_deg": 44.0, "img_scale": 0.62},
+    "cam1": {"yaw": math.radians(-100.0), "img_deg": 40.0, "img_scale": 0.45},
+    "cam2": {"yaw": math.radians(80.0), "img_deg": -40.0, "img_scale": 0.45},
+}
+
+
+def is_example_l(q_rad: np.ndarray) -> bool:
+    q = np.asarray(q_rad, dtype=np.float64).reshape(6)
+    return float(np.max(np.abs(q - FILE_L_Q))) < 0.08
+
+
+def seed_photo_if_example(
+    q_rad: np.ndarray, yaw: float, *, locked: bool = False
+) -> tuple[np.ndarray, float]:
+    """Replace the canned L with the validation viewer's start pose.
+
+    RTDE q is left alone. Yaw is not changed: their redraw applies no extra
+    spin, only the rail shift along UR +X (0 at the home rail).
+    """
+    q = np.asarray(q_rad, dtype=np.float64).reshape(6).copy()
+    if locked or not is_example_l(q):
+        return q, float(yaw)
+    return VIEWER_DEMO_Q.copy(), float(yaw)
+
+
+def mount_R(cfg: UrFkConfig) -> np.ndarray:
+    """Rotation from UR base (Z up) into the vision frame the blue points use."""
+    R = cfg.R_ur_to_vision
+    if R is None or np.allclose(R, np.eye(3), atol=1e-3):
+        return R_UR_Z_UP_TO_CAM_Y_DOWN.copy()
+    return np.asarray(R, dtype=np.float64).reshape(3, 3)
+
+
+def _rz(yaw: float) -> np.ndarray:
+    c, s = math.cos(yaw), math.sin(yaw)
+    return np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]], dtype=np.float64)
+
+
 def ur_base_to_vision_mm(
     pts_ur_mm: np.ndarray, cfg: UrFkConfig
 ) -> np.ndarray:
@@ -191,9 +258,17 @@ def _read_joints_file(path: Path) -> Optional[tuple[np.ndarray, str]]:
     return np.asarray(q[:6], dtype=np.float64), model
 
 
-def _rtde_receive(host: str):
-    """Open one RTDE reader. Returns the interface, or None."""
-    if not host:
+# UR real-time interface (port 30003). Message size is a big-endian int, then
+# doubles. q_actual is six doubles at byte 252 (after time and the five
+# target blocks). Same angles RTDEReceiveInterface.getActualQ returns.
+_Q_ACTUAL_OFFSET = 252
+# Teach-pendant / Polyscope Client Interface: tool vector actual (x,y,z,rx,ry,rz).
+_TCP_ACTUAL_OFFSET = 444
+
+
+def q_from_realtime_packet(packet: bytes) -> Optional[np.ndarray]:
+    """Six joint angles (rad) from one UR 30003 state packet, or None."""
+    if len(packet) < _Q_ACTUAL_OFFSET + 48:
         return None
     try:
         from ur_rtde import RTDEReceiveInterface  # type: ignore
@@ -209,13 +284,154 @@ def _rtde_receive(host: str):
         return None
 
 
-def _close_rtde(rtde) -> None:
-    disconnect = getattr(rtde, "disconnect", None)
-    if callable(disconnect):
+def tcp_from_realtime_packet(packet: bytes) -> Optional[np.ndarray]:
+    """Teach-pendant tool pose XYZ (m) in the UR base, or None."""
+    if len(packet) < _TCP_ACTUAL_OFFSET + 24:
+        return None
+    xyz = struct.unpack(">3d", packet[_TCP_ACTUAL_OFFSET : _TCP_ACTUAL_OFFSET + 24])
+    if not all(math.isfinite(v) and abs(v) < 3.0 for v in xyz):
+        return None
+    return np.asarray(xyz, dtype=np.float64)
+
+
+def teachpad_kinematic_model(robot_model: str = "", *, polyscope: str = "") -> str:
+    """Map Polyscope/dashboard names to the DH table the teach pad actually uses.
+
+    Jeeves reports ``get robot model -> UR5`` on Polyscope 5.12, but the live
+    teach-pad TCP matches the UR5e DH table (±1 mm), not classic UR5. Always
+    prefer the e-Series chain for this cell unless an explicit classic model is
+    requested.
+    """
+    name = (robot_model or "").strip().upper().replace(" ", "")
+    poly = (polyscope or "").lower()
+    if name in {"UR5E", "UR5", "UR7E", "UR7"}:
+        return "ur5e"
+    if "5.1" in poly or "5.12" in poly or "ursoftware 5" in poly:
+        return "ur5e"
+    if name in {"UR10E", "UR10"}:
+        return "ur10e"
+    if name in UR_MODELS_M:
+        return name.lower()
+    return "ur5e"
+
+
+class TeachPadCache:
+    """Background reader of the teach-pendant realtime stream (port 30003).
+
+    Provides the same joint angles + TCP the Polyscope 3D model uses.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self.q: Optional[np.ndarray] = None
+        self.tcp_m: Optional[np.ndarray] = None
+        self.mode = ""
+        self.host = ""
+        self.robot_model = ""
+        self._started = False
+        self._stop = False
+
+    def note(self, q: np.ndarray, *, live: bool, host: str) -> None:
+        with self._lock:
+            self.q = np.asarray(q, dtype=np.float64).reshape(6).copy()
+            self.mode = "live" if live else "hold"
+            self.host = host
+            self._started = True
+
+    def mark_hold(self) -> None:
+        with self._lock:
+            if self.q is not None:
+                self.mode = "hold"
+
+    def snapshot(self, host: str = "") -> Optional[tuple[np.ndarray, str]]:
+        with self._lock:
+            if self.q is None:
+                return None
+            if host and self.host and self.host != host:
+                return None
+            tag = "teachpad-live" if self.mode == "live" else "teachpad-hold"
+            return self.q.copy(), f"{tag}:{self.host or host}"
+
+    def snapshot_tcp_mm(self, host: str = "") -> Optional[np.ndarray]:
+        """Teach-pad tool XYZ in UR base, millimeters."""
+        with self._lock:
+            if self.tcp_m is None:
+                return None
+            if host and self.host and self.host != host:
+                return None
+            return (self.tcp_m * 1000.0).copy()
+
+    def ensure(self, host: str, port: int = 30003) -> None:
+        with self._lock:
+            if self._started and self.host == host:
+                return
+            self.host = host
+            self._started = True
+            self._stop = False
+        threading.Thread(
+            target=self._run, args=(host, int(port)), daemon=True
+        ).start()
+
+    def _probe_model(self, host: str) -> None:
+        """Best-effort dashboard ``get robot model`` (port 29999), short timeout."""
         try:
-            disconnect()
+            sock = socket.create_connection((host, 29999), 0.4)
+            try:
+                sock.settimeout(0.4)
+                sock.recv(1024)  # welcome banner
+                sock.sendall(b"get robot model\n")
+                raw = sock.recv(256).decode("utf-8", "ignore").strip()
+            finally:
+                sock.close()
+            if raw:
+                with self._lock:
+                    self.robot_model = raw.splitlines()[-1].strip()
         except Exception:
             pass
+
+    def _run(self, host: str, port: int) -> None:
+        self._probe_model(host)
+        while not self._stop:
+            sock = None
+            try:
+                sock = socket.create_connection((host, port), 1.0)
+                sock.settimeout(0.5)
+                buf = b""
+                while not self._stop:
+                    chunk = sock.recv(4096)
+                    if not chunk:
+                        raise ConnectionError("teach pad closed")
+                    buf += chunk
+                    if len(buf) > 20000:
+                        buf = buf[-4000:]
+                    while len(buf) >= 4:
+                        n = struct.unpack(">i", buf[:4])[0]
+                        if n < 300 or n > 4000:
+                            buf = buf[1:]
+                            continue
+                        if len(buf) < n:
+                            break
+                        pkt = buf[:n]
+                        buf = buf[n:]
+                        q = q_from_realtime_packet(pkt)
+                        if q is None:
+                            continue
+                        tcp = tcp_from_realtime_packet(pkt)
+                        with self._lock:
+                            self.q = q
+                            if tcp is not None:
+                                self.tcp_m = tcp
+                            self.mode = "live"
+                            self.host = host
+            except Exception:
+                self.mark_hold()
+                time.sleep(0.4)
+            finally:
+                if sock is not None:
+                    try:
+                        sock.close()
+                    except Exception:
+                        pass
 
 
 def _read_joints_rtde(host: str) -> Optional[tuple[np.ndarray, str]]:
@@ -287,18 +503,65 @@ def robot_arm_points_mm(cfg: UrFkConfig | None = None) -> Optional[tuple[np.ndar
 def load_joints(
     cfg: UrFkConfig | None = None,
 ) -> tuple[np.ndarray, str, str]:
-    """Return (q_rad, model, source_name)."""
+    """Return (q_rad, model, source_name).
+
+    When ``host`` is set, joints come from the teach-pendant realtime stream
+    (same q Polyscope's 3D robot uses). The kinematic ``model`` is forced to the
+    teach-pad DH table (UR5e for Jeeves), not the dashboard's short name ``UR5``.
+    """
     cfg = cfg or load_fk_config()
+    model = teachpad_kinematic_model(
+        getattr(_TEACH, "robot_model", "") or cfg.model
+    )
     if cfg.host:
-        got = _read_joints_rtde(cfg.host)
-        if got is not None:
-            return got[0], cfg.model or got[1], f"rtde:{cfg.host}"
+        _TEACH.ensure(cfg.host, cfg.port)
+        snap = _TEACH.snapshot(cfg.host)
+        if snap is None:
+            # First packets take a moment; wait briefly before PHOTO_Q fallback.
+            for _ in range(25):
+                time.sleep(0.08)
+                snap = _TEACH.snapshot(cfg.host)
+                if snap is not None:
+                    break
+        if snap is not None:
+            model = teachpad_kinematic_model(
+                getattr(_TEACH, "robot_model", "") or cfg.model
+            )
+            return snap[0], model, snap[1]
+        # Stream not up yet. Do not draw the file L. Photographed pose until
+        # the first actual-q packet, then the cache holds the last encoders.
+        return PHOTO_Q.copy(), model, "photo:offline"
     got = _read_joints_file(cfg.joints_path)
     if got is not None:
-        return got[0], str(got[1] or cfg.model), f"file:{cfg.joints_path.name}"
+        return got[0], teachpad_kinematic_model(str(got[1] or cfg.model)), f"file:{cfg.joints_path.name}"
     # Mock “elbow up” pose so the stick figure is visible offline.
     q = np.array([0.0, -1.5708, 1.5708, -1.5708, -1.5708, 0.0], dtype=np.float64)
-    return q, cfg.model, "mock"
+    return q, model, "mock"
+
+
+def teachpad_tcp_mm(cfg: UrFkConfig | None = None) -> Optional[np.ndarray]:
+    """Live teach-pad tool XYZ (mm) in UR base, or None if the stream is down."""
+    cfg = cfg or load_fk_config()
+    if not cfg.host:
+        return None
+    _TEACH.ensure(cfg.host, cfg.port)
+    return _TEACH.snapshot_tcp_mm(cfg.host)
+
+
+def teachpad_fk_residual_mm(
+    q_rad: np.ndarray, tcp_mm: np.ndarray, model: str = "ur5e"
+) -> float:
+    """|FK flange − teach-pad TCP| in mm (should be ~0–2 for the right DH model)."""
+    pts = fk_joint_positions_mm(q_rad, model=model)
+    flange = pts[-1]
+    t = np.asarray(tcp_mm, dtype=np.float64).reshape(3)
+    return float(
+        math.sqrt(
+            (float(flange[0]) - float(t[0])) ** 2
+            + (float(flange[1]) - float(t[1])) ** 2
+            + (float(flange[2]) - float(t[2])) ** 2
+        )
+    )
 
 
 def point_to_aabb_gap_mm(

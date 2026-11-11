@@ -25,7 +25,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from vial_3d_model import EXTRINSICS_PATH, is_extrinsics_placeholder
+from cam_geometry import EXTRINSICS_PATH, is_extrinsics_placeholder
 
 ROOT = Path(__file__).resolve().parent
 CALIB_DIR = ROOT / "stereo_calib_pairs"
@@ -86,7 +86,7 @@ def _intrinsics_from_cap(cap: cv2.VideoCapture, width: int, height: int) -> list
 def cmd_status(_: argparse.Namespace) -> int:
     if not EXTRINSICS_PATH.exists():
         print(f"MISSING: {EXTRINSICS_PATH}")
-        print("Run: python vial_3d_model.py fit   # writes a placeholder template")
+        print("Run: python cam_geometry.py fit   # writes a placeholder template")
         print("Then: python stereo_calib_stub.py capture  &&  python stereo_calib_stub.py calibrate")
         return 1
     data = json.loads(EXTRINSICS_PATH.read_text(encoding="utf-8"))

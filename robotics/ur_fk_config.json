@@ -1,6 +1,6 @@
 {
   "model": "ur5e",
-  "host": "",
+  "host": "192.168.1.219",
   "joints_path": "ur_joints.json",
   "R_ur_to_vision": [
     [
@@ -36,5 +36,5 @@
   ],
   "confirm_gate_mm": 80.0,
   "proximity_mm": 100.0,
-  "notes": "Write q_rad into ur_joints.json from teach pendant / script, or set host to robot IP for RTDE when ur_rtde is installed."
+  "notes": "host=Jeeves teach-pad stream (port 30003). model=ur5e matches Polyscope TCP (dashboard may say UR5). Do not switch to classic ur5."
 }

@@ -1,0 +1,32 @@
+{
+  "note": "Locked (0,0) is the purple tape on the robot pedestal. Both cameras store that same physical point. After you bump a camera, create RESET_BASE_ORIGIN in this folder and the next tape sighting stores the new offset.",
+  "cams": {
+    "cam0": {
+      "u": 234.5,
+      "v": 413.0,
+      "p_cam_mm": [
+        -336.565099702547,
+        670.1672540838457,
+        1445.5
+      ]
+    },
+    "cam1": {
+      "u": 76.5,
+      "v": 296.5,
+      "p_cam_mm": [
+        -1769.281446520078,
+        386.9097519636541,
+        2666.0
+      ]
+    },
+    "cam2": {
+      "u": 206.5,
+      "v": 289.0,
+      "p_cam_mm": [
+        -469.9574502502434,
+        189.427603747556,
+        1520.0
+      ]
+    }
+  }
+}

@@ -1,6 +1,6 @@
 {
   "label": "OPEN",
-  "source": "C:\\Users\\Ceder-ALAB\\Desktop\\Jessica\\Jessica\\robotics\\rack_lid_state\\keeps\\open_20261015_170349_tray_extended_white_lids_screenshot.png",
+  "source": "D:\\Jessica\\Jessica\\robotics\\rack_lid_state\\keeps\\open_20261015_170349_tray_extended_white_lids_screenshot.png",
   "note": "fullframe embed of overlay crop for ROI scoring",
   "agent": "seed_and_verify_open_variants",
   "ts": "20261015_170607"

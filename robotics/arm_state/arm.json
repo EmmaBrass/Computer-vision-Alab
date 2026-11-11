@@ -4,7 +4,7 @@
   "motion_thresh": 10,
   "min_box_side": 24,
   "label_stride": 1,
-  "yolo_model": "C:\\Users\\Ceder-ALAB\\Desktop\\Jessica\\Jessica\\robotics\\arm_state\\runs\\arm_detect\\weights\\best.pt",
+  "yolo_model": "D:\\Jessica\\Jessica\\robotics\\arm_state\\runs\\arm_detect\\weights\\best.pt",
   "imgsz": 640,
   "conf": 0.25,
   "last_label": {
@@ -14,7 +14,7 @@
   },
   "updated_at": "2026-10-16T10:49:06",
   "label_method": "color",
-  "weights": "C:\\Users\\Ceder-ALAB\\Desktop\\Jessica\\Jessica\\robotics\\arm_state\\runs\\arm_detect\\weights\\best.pt",
+  "weights": "D:\\Jessica\\Jessica\\robotics\\arm_state\\runs\\arm_detect\\weights\\best.pt",
   "last_train": "2026-10-16T14:43:27",
   "n_train_images": 4208
 }

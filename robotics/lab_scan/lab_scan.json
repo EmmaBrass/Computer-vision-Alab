@@ -1,0 +1,126 @@
+{
+  "source": "Orbbec SDK",
+  "frame": "COLMAP walkthrough map, meters",
+  "cameras": {
+    "cam1": {
+      "camera_center_m": [
+        -0.6631876072537891,
+        -0.9259574588725504,
+        0.442923766891271
+      ],
+      "vertices": 3669,
+      "triangles": 5975,
+      "pose_inliers": 876,
+      "pose_median_reproj_px": 1.0365947787299343,
+      "depth_scale_vs_splat": {
+        "scale": 0.9816,
+        "ok": true,
+        "applied": 0.9816,
+        "from": "black box"
+      },
+      "anchor": {
+        "status": "locked",
+        "shift_px": 0.09,
+        "depth_change_m": 0.017,
+        "match": 0.74,
+        "misses": 0,
+        "what": "black instrument box with the grey top, right of the arm",
+        "box_align": {
+          "status": "aligned",
+          "turn_deg": 0.0,
+          "scale": 0.9816,
+          "left_px": 2.8,
+          "fit_cm": 8.9,
+          "box_depth_off_cm": 0.2
+        }
+      }
+    }
+  },
+  "arm": {
+    "time": "2026-11-10 18:00:19",
+    "frame": "lab map (COLMAP), meters",
+    "method": "change vs splat, connected to the base",
+    "robot": "Jeeves (UR5e)",
+    "base_m": [
+      0.24,
+      0.41,
+      1.04
+    ],
+    "cameras": [
+      "cam1"
+    ],
+    "seen": false,
+    "points": 1,
+    "center_m": [
+      0.2999,
+      0.4805,
+      0.9707
+    ],
+    "top_m": [
+      0.2999,
+      0.4805,
+      0.9707
+    ],
+    "bbox_min_m": [
+      0.2999,
+      0.4805,
+      0.9707
+    ],
+    "bbox_max_m": [
+      0.2999,
+      0.4805,
+      0.9707
+    ],
+    "height_span_m": 0.0,
+    "per_camera": {
+      "cam1": {
+        "changed_points": 4250
+      }
+    }
+  },
+  "objects": {
+    "rack": {
+      "name": "vial rack",
+      "time": "2026-11-10 18:00:19",
+      "box": {
+        "center_m": [
+          0.9319,
+          -0.0538,
+          1.1496
+        ],
+        "axes": [
+          [
+            -0.0065,
+            0.8149,
+            -0.5795
+          ],
+          [
+            0.9712,
+            -0.1329,
+            -0.1979
+          ],
+          [
+            -0.2383,
+            -0.5641,
+            -0.7906
+          ]
+        ],
+        "min_m": [
+          -0.202,
+          -0.139,
+          -0.185
+        ],
+        "max_m": [
+          0.202,
+          0.139,
+          0.185
+        ]
+      },
+      "live_cells": 1364,
+      "new_cells": 202,
+      "attached_new_cells": 0,
+      "state": "CLOSED",
+      "reason": "nothing new sticking out of the rack"
+    }
+  }
+}

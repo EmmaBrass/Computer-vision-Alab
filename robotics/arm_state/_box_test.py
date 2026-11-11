@@ -1,13 +1,13 @@
-﻿import cv2, sys
+import cv2, sys
 from pathlib import Path
-sys.path.insert(0, r"C:\Users\Ceder-ALAB\Desktop\Jessica\Jessica\robotics")
+sys.path.insert(0, r"D:\Jessica\Jessica\robotics")
 import importlib, arm_agents
 importlib.reload(arm_agents)
 from arm_agents import _arm_color_box
 dest = Path(r"C:\Users\Ceder-ALAB\Documents\GitHub\alab_one\agent_temp\arm_overlays")
 dest.mkdir(parents=True, exist_ok=True)
 for cam in ("cam0","cam1"):
-    paths = sorted(Path(rf"C:\Users\Ceder-ALAB\Desktop\Jessica\Jessica\robotics\arm_state\captures\{cam}").glob("*.png"))
+    paths = sorted(Path(rf"D:\Jessica\Jessica\robotics\arm_state\captures\{cam}").glob("*.png"))
     ok = 0
     for i in (0, 100, 500, 800, 1100):
         img = cv2.imread(str(paths[i]))

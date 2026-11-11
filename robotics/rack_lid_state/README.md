@@ -6,7 +6,7 @@ Camera 1 sees a rack that does not move. The locked crop is `rack.json`.
 Live view:
 
 ```powershell
-cd C:\Users\Ceder-ALAB\Desktop\Jessica\Jessica\robotics
+cd D:\Jessica\Jessica\robotics
 & C:\Users\Ceder-ALAB\anaconda3\python.exe .\rack_lid_state.py focus
 ```
 
@@ -21,7 +21,7 @@ Use a clear still of the rack (or live camera). Click the **center of each hole*
 you care about, then press Enter:
 
 ```powershell
-cd C:\Users\Ceder-ALAB\Desktop\Jessica\Jessica\robotics
+cd D:\Jessica\Jessica\robotics
 python rack_lid_state.py calibrate --image rack_lid_state\example_closed.png
 # or live:
 python rack_lid_state.py calibrate --camera 0
@@ -32,7 +32,7 @@ Saves `rack_lid_state\slots.json`.
 ## 2. Check stills
 
 ```powershell
-cd C:\Users\Ceder-ALAB\Desktop\Jessica\Jessica\robotics
+cd D:\Jessica\Jessica\robotics
 python rack_lid_state.py still --image rack_lid_state\example_closed.png
 python rack_lid_state.py still --image rack_lid_state\example_open.png
 ```
@@ -42,7 +42,7 @@ Green box = **closed**, orange = **open**, gray = **empty**.
 ## 3. Live
 
 ```powershell
-cd C:\Users\Ceder-ALAB\Desktop\Jessica\Jessica\robotics
+cd D:\Jessica\Jessica\robotics
 python rack_lid_state.py live --camera 0
 ```
 
@@ -61,7 +61,7 @@ Separate from per-slot open/closed above. Keeps only frames that look like
 `reference_closed.png` (front view, trays retracted). No free-form YOLO.
 
 ```powershell
-cd C:\Users\Ceder-ALAB\Desktop\Jessica\Jessica\robotics
+cd D:\Jessica\Jessica\robotics
 C:\Users\Ceder-ALAB\anaconda3\python.exe rack_capture_agents.py still
 C:\Users\Ceder-ALAB\anaconda3\python.exe rack_capture_agents.py refresh-template --camera 1
 C:\Users\Ceder-ALAB\anaconda3\python.exe rack_capture_agents.py run --camera 1 --seconds 30
@@ -70,7 +70,7 @@ C:\Users\Ceder-ALAB\anaconda3\python.exe rack_capture_agents.py run --camera 1 -
 Open capture (rack open now; stamps `open_*.png` + `"rack_state": "OPEN"`):
 
 ```powershell
-cd C:\Users\Ceder-ALAB\Desktop\Jessica\Jessica\robotics
+cd D:\Jessica\Jessica\robotics
 C:\Users\Ceder-ALAB\anaconda3\python.exe rack_capture_agents.py refresh-open-template --camera 1
 C:\Users\Ceder-ALAB\anaconda3\python.exe rack_capture_agents.py run --camera 1 --seconds 20 --label open
 ```
@@ -91,7 +91,7 @@ Keep-look photo: `reference_closed.png`.
   `template_open_roi.png` + sampled `keeps/open_*.png`.
 
 ```powershell
-cd C:\Users\Ceder-ALAB\Desktop\Jessica\Jessica\robotics
+cd D:\Jessica\Jessica\robotics
 C:\Users\Ceder-ALAB\anaconda3\python.exe rack_capture_agents.py judge --smoke
 C:\Users\Ceder-ALAB\anaconda3\python.exe rack_capture_agents.py judge --dir rack_lid_state\keeps
 C:\Users\Ceder-ALAB\anaconda3\python.exe rack_capture_agents.py judge --image rack_lid_state\keeps\open_....png

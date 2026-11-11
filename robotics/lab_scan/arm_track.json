@@ -1,0 +1,42 @@
+{
+  "time": "2026-11-10 18:00:19",
+  "frame": "lab map (COLMAP), meters",
+  "method": "change vs splat, connected to the base",
+  "robot": "Jeeves (UR5e)",
+  "base_m": [
+    0.24,
+    0.41,
+    1.04
+  ],
+  "cameras": [
+    "cam1"
+  ],
+  "seen": false,
+  "points": 1,
+  "center_m": [
+    0.2999,
+    0.4805,
+    0.9707
+  ],
+  "top_m": [
+    0.2999,
+    0.4805,
+    0.9707
+  ],
+  "bbox_min_m": [
+    0.2999,
+    0.4805,
+    0.9707
+  ],
+  "bbox_max_m": [
+    0.2999,
+    0.4805,
+    0.9707
+  ],
+  "height_span_m": 0.0,
+  "per_camera": {
+    "cam1": {
+      "changed_points": 4250
+    }
+  }
+}

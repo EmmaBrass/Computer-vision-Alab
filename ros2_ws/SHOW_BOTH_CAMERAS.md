@@ -5,7 +5,7 @@
 ## One command (ROS + dual window)
 
 ```powershell
-cd C:\Users\Ceder-ALAB\Desktop\Jessica\Jessica\ros2_ws
+cd D:\Jessica\Jessica\ros2_ws
 .\launch_ros_dual_sync.cmd
 ```
 
@@ -20,7 +20,7 @@ That is cam0 (left) and cam1 (right) live.
 Second terminal:
 
 ```powershell
-cd C:\Users\Ceder-ALAB\Desktop\Jessica\Jessica\ros2_ws
+cd D:\Jessica\Jessica\ros2_ws
 .\view_dual_cameras.cmd
 ```
 
@@ -29,6 +29,6 @@ cd C:\Users\Ceder-ALAB\Desktop\Jessica\Jessica\ros2_ws
 Stop any `launch_ros_dual_sync` / orbbec publishers first, then:
 
 ```powershell
-cd C:\Users\Ceder-ALAB\Desktop\Jessica\Jessica\robotics
+cd D:\Jessica\Jessica\robotics
 .\view_dual_cameras.cmd
 ```

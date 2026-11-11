@@ -10,7 +10,7 @@ Agents (separate processes):
 Supervisor coordinates: capture → label → algo → train → judge.
 
 Examples:
-  cd C:\\Users\\Ceder-ALAB\\Desktop\\Jessica\\Jessica\\robotics
+  cd D:\\Jessica\\Jessica\\robotics
   python rack_cv_supervisor.py bootstrap-closed --source ros --n 8
   python rack_cv_supervisor.py run --source ros --seconds 12
   python rack_cv_supervisor.py status

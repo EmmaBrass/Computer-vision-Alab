@@ -1,7 +1,7 @@
 """Multi-agent Orbbec capture: keep only closed/home rack frames (camera 1).
 
 Alongside rack_lid_state.py (per-slot open/closed). This pipeline does NOT run
-YOLO / free-form vial labelling — it only asks: does this frame look like
+free-form object labelling — it only asks: does this frame look like
 rack_lid_state/reference_closed.png (front view, trays retracted)?
 
 Agents (separate processes, named in logs):
@@ -10,7 +10,7 @@ Agents (separate processes, named in logs):
   KeeperAgent   — write keepers / capped rejects + score log
 
 Examples:
-  cd C:\\Users\\Ceder-ALAB\\Desktop\\Jessica\\Jessica\\robotics
+  cd D:\\Jessica\\Jessica\\robotics
   C:\\Users\\Ceder-ALAB\\anaconda3\\python.exe rack_capture_agents.py still
   C:\\Users\\Ceder-ALAB\\anaconda3\\python.exe rack_capture_agents.py run --camera 1 --seconds 30
   C:\\Users\\Ceder-ALAB\\anaconda3\\python.exe rack_capture_agents.py refresh-open-template --camera 1

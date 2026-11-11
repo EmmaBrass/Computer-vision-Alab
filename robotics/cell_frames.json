@@ -1,69 +1,34 @@
 {
   "world_frame": "ur_base",
-  "origin_mm": [
-    0.0,
-    0.0,
-    0.0
-  ],
-  "layout": "perpendicular_90",
-  "notes": "ur_base is (0,0,0) at the blue pedestal joint. p_base = R @ p_cam + t_mm. layout=perpendicular_90: cam0 R=I, cam1 R=yaw+90 about Y. bootstrap updates t so each camera maps the pedestal to the origin.",
+  "origin_mm": [0.0, 0.0, 0.0],
+  "layout": "opposite_180",
+  "notes": "cam1↔cam2 face each other (~180 deg), high looking down onto the arm. cam0 is a separate side/close view — not part of that pair. p_base = R @ p_cam + t_mm. OnlineCamPose refines absolute tilt from tags/blues.",
   "bootstrap_from_blue_base": true,
   "fx_px": 520.0,
   "rack_height_mm": 400.0,
   "cameras": {
     "cam0": {
       "frame_id": "orbbec_cam0",
-      "R": [
-        [
-          1.0,
-          0.0,
-          0.0
-        ],
-        [
-          0.0,
-          1.0,
-          0.0
-        ],
-        [
-          0.0,
-          0.0,
-          1.0
-        ]
-      ],
-      "t_mm": [
-        -36.1375,
-        30.625,
-        -637.0
-      ],
-      "ready": true
+      "R": [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+      "t_mm": [-36.1375, 30.625, -637.0],
+      "ready": true,
+      "role": "side_close_independent"
     },
     "cam1": {
       "frame_id": "orbbec_cam1",
-      "R": [
-        [
-          0.0,
-          0.0,
-          1.0
-        ],
-        [
-          0.0,
-          1.0,
-          0.0
-        ],
-        [
-          -1.0,
-          0.0,
-          0.0
-        ]
-      ],
-      "t_mm": [
-        -567.0,
-        32.166346153846156,
-        299.8557692307692
-      ],
-      "ready": true
+      "R": [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+      "t_mm": [-567.0, 32.166346153846156, 299.8557692307692],
+      "ready": true,
+      "role": "high_down_opposite_a"
+    },
+    "cam2": {
+      "frame_id": "orbbec_cam2",
+      "R": [[-1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, -1.0]],
+      "t_mm": [0.0, 0.0, 0.0],
+      "ready": false,
+      "role": "high_down_opposite_b"
     }
   },
   "stereo_extrinsics": "stereo_extrinsics.json",
-  "updated_at": "2026-10-19T17:12:34"
+  "updated_at": "2026-11-03T18:26:00"
 }

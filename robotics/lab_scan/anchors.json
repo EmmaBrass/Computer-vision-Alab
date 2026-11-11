@@ -1,0 +1,15 @@
+{
+  "cam1": {
+    "box": [
+      415,
+      180,
+      140,
+      120
+    ],
+    "size": [
+      640,
+      480
+    ],
+    "what": "black instrument box with the grey top, right of the arm"
+  }
+}

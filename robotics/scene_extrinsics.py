@@ -30,7 +30,7 @@ from cell_frames import (
     load_cell_frames,
     save_cell_frames,
 )
-from vial_3d_model import (
+from cam_geometry import (
     EXTRINSICS_PATH,
     Intrinsics,
     default_intrinsics,

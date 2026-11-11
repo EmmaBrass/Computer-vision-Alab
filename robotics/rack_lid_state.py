@@ -1,9 +1,9 @@
-"""Fixed rack lid state: closed vs open (not free-form vial search).
+"""Fixed rack lid state: closed vs open (not free-form object search).
 
 Camera 1 looks at a rack that does not move. Lock the rack once in rack.json,
 then focus only that crop:
 
-    cd C:\\Users\\Ceder-ALAB\\Desktop\\Jessica\\Jessica\\robotics
+    cd D:\\Jessica\\Jessica\\robotics
     python rack_lid_state.py focus
 
 Green = closed (white lid). Orange = open (beige interior). Q quits.

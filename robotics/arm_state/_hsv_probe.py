@@ -1,4 +1,4 @@
-﻿import cv2
+import cv2
 import numpy as np
 from pathlib import Path
 
@@ -59,8 +59,8 @@ def probe(path):
         else:
             print(f"patch {name} no sat")
 
-cap0 = sorted(Path(r"C:\Users\Ceder-ALAB\Desktop\Jessica\Jessica\robotics\arm_state\captures\cam0").glob("*.png"))[500]
-cap1 = sorted(Path(r"C:\Users\Ceder-ALAB\Desktop\Jessica\Jessica\robotics\arm_state\captures\cam1").glob("*.png"))[500]
+cap0 = sorted(Path(r"D:\Jessica\Jessica\robotics\arm_state\captures\cam0").glob("*.png"))[500]
+cap1 = sorted(Path(r"D:\Jessica\Jessica\robotics\arm_state\captures\cam1").glob("*.png"))[500]
 probe(cap0)
 probe(cap1)
 

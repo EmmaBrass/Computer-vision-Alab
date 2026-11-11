@@ -3,7 +3,7 @@
 Color and depth from the same grab share an identical header stamp so
 intra-camera association is exact; cross-camera sync is ApproximateTime.
 
-Publishers open CAP_OBSENSOR only — YOLO loads in sync_detect, not here.
+Publishers open CAP_OBSENSOR only and stream color / depth / camera_info.
 """
 
 from __future__ import annotations
@@ -176,7 +176,7 @@ class OrbbecCameraPublisher(Node):
 
         # Large RGB-D frames must not accumulate in reliable DDS queues. A
         # latest-sensor-frame profile avoids native middleware exhaustion when
-        # detection is slower than capture.
+        # a subscriber is slower than capture.
         image_qos = QoSProfile(
             history=HistoryPolicy.KEEP_LAST,
             depth=2,
@@ -199,11 +199,8 @@ class OrbbecCameraPublisher(Node):
         import depthcamera as dc
 
         self._dc = dc
-        # No YOLO in publishers — VialDetector(None) skips ultralytics load.
-        stream_only = dc.VialDetector(None, dc.DEFAULT_YOLO_CONF)
         self._cam = dc.OrbbecDepthCamera(
             camera_index=self.camera_index,
-            detector=stream_only,
             window=f"ros_pub_cam{self.camera_index}",
         )
         if open_delay_s > 0.0:

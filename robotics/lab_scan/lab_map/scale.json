@@ -1,0 +1,15 @@
+{
+  "scale_colmap_to_meters": 0.2447541746954412,
+  "method": "median(sensor_depth / colmap_depth) over all registered keypoints with valid depth (0.15-10 m)",
+  "num_keypoints": 3117882,
+  "num_images": 1030,
+  "mad": 0.010471370481577258,
+  "mad_relative": 0.04278321501403301,
+  "percentiles_5_25_75_95": [
+    0.16111026724408792,
+    0.23453613499574183,
+    0.2555070575780148,
+    0.3747968146351465
+  ],
+  "per_image_median_std_relative": 0.04134679497713637
+}

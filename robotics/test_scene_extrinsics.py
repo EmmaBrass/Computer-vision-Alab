@@ -28,7 +28,7 @@ from scene_extrinsics import (
     umeyama_rigid,
     write_stereo_extrinsics,
 )
-from vial_3d_model import Intrinsics, default_intrinsics
+from cam_geometry import Intrinsics, default_intrinsics
 
 
 class TestAsymmetricBoard(unittest.TestCase):

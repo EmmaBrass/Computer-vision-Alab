@@ -2,15 +2,19 @@
 
 p_base = R @ p_cam + t_mm
 
-Default layout: cam0 and cam1 are perpendicular (90 deg yaw about camera Y),
-both looking inward at the cell. t is bootstrapped so the blue pedestal is origin.
-Scene+tape calib can replace the assumed R when it succeeds.
+Physical layout (Jessica cell):
+  - cam1 and cam2 face each other (~180 deg), mounted high, looking down onto the arm
+  - cam0 is a separate close / side view — not part of that opposite pair
+
+Default prior ``opposite_180``: cam1 R = I, cam2 R = 180 deg yaw about Y.
+cam0 keeps its own R (not forced relative to cam1). Absolute tilt (high-down)
+is refined by OnlineCamPose from tags/blues. t is bootstrapped so the blue
+pedestal maps to the origin when enabled.
 """
 
 from __future__ import annotations
 
 import json
-import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,11 +22,17 @@ from typing import Optional
 
 import numpy as np
 
-ROOT = Path(__file__).resolve().parent
-CELL_FRAMES_PATH = ROOT / "cell_frames.json"
-
-# cam1 optical frame relative to cam0 when mounts are perpendicular (level cameras):
-# yaw +90 deg about Y (OpenCV: X right, Y down, Z forward).
+# cam2 optical frame relative to cam1 when mounts face each other (level / high):
+# yaw 180 deg about Y (OpenCV: X right, Y down, Z forward).
+OPPOSITE_R_CAM2 = np.array(
+    [
+        [-1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.0, 0.0, -1.0],
+    ],
+    dtype=np.float64,
+)
+# Legacy: cam0⊥cam1 at 90 deg (wrong for this cell; kept for old JSON only).
 PERPENDICULAR_R_CAM1 = np.array(
     [
         [0.0, 0.0, 1.0],
@@ -31,9 +41,13 @@ PERPENDICULAR_R_CAM1 = np.array(
     ],
     dtype=np.float64,
 )
+LAYOUT_OPPOSITE_180 = "opposite_180"
 LAYOUT_PERPENDICULAR = "perpendicular_90"
 LAYOUT_SCENE_TAPE = "scene_tape"
 LAYOUT_ASYMMETRIC_BOARD = "asymmetric_board"
+
+# Pair used for opposite high-down localization. cam0 is independent.
+OPPOSITE_PAIR = ("cam1", "cam2")
 
 
 @dataclass
@@ -52,19 +66,26 @@ class CellFrames:
     rack_height_mm: float
     cam0: CamPose
     cam1: CamPose
-    layout: str = LAYOUT_PERPENDICULAR
+    cam2: CamPose
+    layout: str = LAYOUT_OPPOSITE_180
 
     def pose(self, cam: str) -> CamPose:
-        return self.cam0 if cam == "cam0" else self.cam1
+        if cam == "cam0":
+            return self.cam0
+        if cam == "cam2":
+            return self.cam2
+        return self.cam1
 
 
 def default_cell_frames_path(robotics_root: Optional[Path] = None) -> Path:
     if robotics_root is not None:
         return Path(robotics_root) / "cell_frames.json"
+    import os
+
     env = os.environ.get("ORBBEC_CAMERA_ROOT", "").strip()
     if env:
         return Path(env) / "cell_frames.json"
-    return CELL_FRAMES_PATH
+    return Path(__file__).resolve().parents[4] / "robotics" / "cell_frames.json"
 
 
 def _pose_from_dict(d: dict, default_id: str) -> CamPose:
@@ -78,8 +99,27 @@ def _pose_from_dict(d: dict, default_id: str) -> CamPose:
     )
 
 
+def apply_opposite_180_layout(cf: CellFrames) -> CellFrames:
+    """cam1↔cam2 face each other (180 deg). cam0 left alone (separate view)."""
+    cf.layout = LAYOUT_OPPOSITE_180
+    # Keep cam1 as the reference heading for the opposite pair.
+    if cf.cam1.R is None or not np.isfinite(cf.cam1.R).all():
+        cf.cam1.R = np.eye(3, dtype=np.float64)
+    # cam2 = 180 yaw about Y relative to cam1's current R.
+    R1 = np.asarray(cf.cam1.R, dtype=np.float64).reshape(3, 3)
+    out = np.zeros((3, 3), dtype=np.float64)
+    for i in range(3):
+        for j in range(3):
+            s = 0.0
+            for k in range(3):
+                s += float(OPPOSITE_R_CAM2[i, k]) * float(R1[k, j])
+            out[i, j] = s
+    cf.cam2.R = out
+    return cf
+
+
 def apply_perpendicular_layout(cf: CellFrames) -> CellFrames:
-    """cam0 = identity; cam1 = 90 deg yaw. Keeps existing t_mm / ready flags."""
+    """Legacy cam0⊥cam1 90 deg. Prefer ``apply_opposite_180_layout`` for this cell."""
     cf.layout = LAYOUT_PERPENDICULAR
     cf.cam0.R = np.eye(3, dtype=np.float64)
     cf.cam1.R = PERPENDICULAR_R_CAM1.copy()
@@ -88,21 +128,25 @@ def apply_perpendicular_layout(cf: CellFrames) -> CellFrames:
 
 def load_cell_frames(path: Optional[Path] = None) -> CellFrames:
     path = Path(path) if path is not None else default_cell_frames_path()
+    eye = np.eye(3, dtype=np.float64)
+    z = np.zeros(3, dtype=np.float64)
     if not path.is_file():
-        eye = np.eye(3, dtype=np.float64)
-        z = np.zeros(3, dtype=np.float64)
         return CellFrames(
             path=path,
             bootstrap_from_blue_base=True,
             fx_px=520.0,
             rack_height_mm=400.0,
             cam0=CamPose("orbbec_cam0", eye.copy(), z.copy(), False),
-            cam1=CamPose("orbbec_cam1", PERPENDICULAR_R_CAM1.copy(), z.copy(), False),
-            layout=LAYOUT_PERPENDICULAR,
+            cam1=CamPose("orbbec_cam1", eye.copy(), z.copy(), False),
+            cam2=CamPose("orbbec_cam2", OPPOSITE_R_CAM2.copy(), z.copy(), False),
+            layout=LAYOUT_OPPOSITE_180,
         )
     data = json.loads(path.read_text(encoding="utf-8"))
     cams = data.get("cameras") or {}
-    layout = str(data.get("layout") or LAYOUT_PERPENDICULAR)
+    layout = str(data.get("layout") or LAYOUT_OPPOSITE_180)
+    # Migrate old perpendicular default when JSON still says that.
+    if layout == LAYOUT_PERPENDICULAR and "cam2" not in cams:
+        layout = LAYOUT_OPPOSITE_180
     cf = CellFrames(
         path=path,
         bootstrap_from_blue_base=bool(data.get("bootstrap_from_blue_base", True)),
@@ -110,10 +154,15 @@ def load_cell_frames(path: Optional[Path] = None) -> CellFrames:
         rack_height_mm=float(data.get("rack_height_mm", 400.0)),
         cam0=_pose_from_dict(cams.get("cam0") or {}, "orbbec_cam0"),
         cam1=_pose_from_dict(cams.get("cam1") or {}, "orbbec_cam1"),
+        cam2=_pose_from_dict(
+            cams.get("cam2") or {"R": OPPOSITE_R_CAM2.tolist()},
+            "orbbec_cam2",
+        ),
         layout=layout,
     )
-    # Enforce known perpendicular prior unless scene calib wrote a custom layout.
-    if layout == LAYOUT_PERPENDICULAR:
+    if layout == LAYOUT_OPPOSITE_180:
+        apply_opposite_180_layout(cf)
+    elif layout == LAYOUT_PERPENDICULAR:
         apply_perpendicular_layout(cf)
     return cf
 
@@ -126,9 +175,10 @@ def save_cell_frames(cf: CellFrames) -> None:
         "notes": (
             "ur_base is (0,0,0) at the blue pedestal / purple-tape origin. "
             "p_base = R @ p_cam + t_mm. "
-            "layout=perpendicular_90: cam0 R=I, cam1 R=yaw+90 about Y. "
-            "layout=scene_tape: R,t from shared-scene ORB + purple-tape Umeyama. "
-            "layout=asymmetric_board: R,t from asymmetric checkerboard/circle stereoCalibrate. "
+            "layout=opposite_180: cam1↔cam2 face each other (180 deg about Y), "
+            "high looking down onto the arm; cam0 is a separate side/close view. "
+            "layout=perpendicular_90: legacy cam0⊥cam1 (not this cell). "
+            "layout=scene_tape / asymmetric_board / arm_tags: measured R,t. "
             "bootstrap updates t so each camera maps the pedestal/tape to the origin."
         ),
         "bootstrap_from_blue_base": bool(cf.bootstrap_from_blue_base),
@@ -140,12 +190,21 @@ def save_cell_frames(cf: CellFrames) -> None:
                 "R": cf.cam0.R.tolist(),
                 "t_mm": cf.cam0.t_mm.reshape(3).tolist(),
                 "ready": bool(cf.cam0.ready),
+                "role": "side_close_independent",
             },
             "cam1": {
                 "frame_id": cf.cam1.frame_id,
                 "R": cf.cam1.R.tolist(),
                 "t_mm": cf.cam1.t_mm.reshape(3).tolist(),
                 "ready": bool(cf.cam1.ready),
+                "role": "high_down_opposite_a",
+            },
+            "cam2": {
+                "frame_id": cf.cam2.frame_id,
+                "R": cf.cam2.R.tolist(),
+                "t_mm": cf.cam2.t_mm.reshape(3).tolist(),
+                "ready": bool(cf.cam2.ready),
+                "role": "high_down_opposite_b",
             },
         },
         "stereo_extrinsics": "stereo_extrinsics.json",
@@ -166,7 +225,7 @@ def bootstrap_pose_from_base_landmark(
     R: Optional[np.ndarray] = None,
     frame_id: str = "orbbec_cam",
 ) -> CamPose:
-    """Set translation so the seen pedestal/tape maps to ur_base origin."""
+    """Set translation so the seen pedestal maps to ur_base origin (R default I)."""
     R_use = np.eye(3, dtype=np.float64) if R is None else np.asarray(R, dtype=np.float64)
     p = np.asarray(p_base_in_cam_mm, dtype=np.float64).reshape(3)
     t = -R_use @ p
@@ -199,80 +258,3 @@ def format_base_retreat(p_joint_base_mm: np.ndarray) -> str:
         + ", ".join(parts)
         + f"  |  remaining ~{dist / 10.0:.0f}cm"
     )
-
-
-def relative_cam1_from_cam0(cf: CellFrames) -> tuple[np.ndarray, np.ndarray]:
-    """Return R,t such that X_cam1 = R @ X_cam0 + t (mm).
-
-    With p_base = R_i @ p_cam_i + t_i:
-      R_0 @ X0 + t0 = R_1 @ X1 + t1
-      X1 = R_1.T @ R_0 @ X0 + R_1.T @ (t0 - t1)
-    """
-    R0, t0 = cf.cam0.R, cf.cam0.t_mm.reshape(3)
-    R1, t1 = cf.cam1.R, cf.cam1.t_mm.reshape(3)
-    R = R1.T @ R0
-    t = R1.T @ (t0 - t1)
-    return R, t
-
-
-def apply_scene_stereo_to_cell_frames(
-    cf: CellFrames,
-    R_0_to_1: np.ndarray,
-    t_0_to_1_mm: np.ndarray,
-    *,
-    origin_cam0_mm: Optional[np.ndarray] = None,
-    origin_cam1_mm: Optional[np.ndarray] = None,
-) -> CellFrames:
-    """Install stereo R,t (cam0→cam1) into cell poses; bootstrap origins when given.
-
-    cam0 stays identity in ur_base when origin_cam0 is provided (tape/pedestal).
-    cam1 R/t are set so relative stereo matches the solve and both map origin→0.
-    """
-    R_rel = np.asarray(R_0_to_1, dtype=np.float64).reshape(3, 3)
-    t_rel = np.asarray(t_0_to_1_mm, dtype=np.float64).reshape(3)
-
-    if origin_cam0_mm is not None:
-        p0 = np.asarray(origin_cam0_mm, dtype=np.float64).reshape(3)
-        cf.cam0 = bootstrap_pose_from_base_landmark(
-            p0, R=np.eye(3), frame_id=cf.cam0.frame_id
-        )
-    else:
-        cf.cam0.R = np.eye(3, dtype=np.float64)
-        cf.cam0.ready = True
-
-    # Prefer bootstrapping cam1 from its own tape observation when available.
-    if origin_cam1_mm is not None:
-        p1 = np.asarray(origin_cam1_mm, dtype=np.float64).reshape(3)
-        # R_cam1_to_base such that relative stereo holds with cam0 = I, t0 = -p0:
-        # X1 = R_rel @ X0 + t_rel
-        # p_base = R0 @ X0 + t0 = X0 + t0  (R0=I)
-        # p_base = R1 @ X1 + t1
-        # => R1 @ (R_rel @ X0 + t_rel) + t1 = X0 + t0  for all X0
-        # => R1 @ R_rel = I  => R1 = R_rel.T
-        # => R1 @ t_rel + t1 = t0  => t1 = t0 - R1 @ t_rel
-        R1 = R_rel.T.copy()
-        t0 = cf.cam0.t_mm.reshape(3)
-        t1 = t0 - R1 @ t_rel
-        # Also force tape in cam1 to origin: t1' = -R1 @ p1; blend by preferring tape.
-        t1_tape = -R1 @ p1
-        cf.cam1 = CamPose(
-            frame_id=cf.cam1.frame_id,
-            R=R1,
-            t_mm=t1_tape,
-            ready=True,
-        )
-        # Keep relative stereo consistent with tape-anchored cam1 when possible.
-        _ = t1  # computed for reference / future soft blend
-    else:
-        R1 = R_rel.T.copy()
-        t0 = cf.cam0.t_mm.reshape(3)
-        t1 = t0 - R1 @ t_rel
-        cf.cam1 = CamPose(
-            frame_id=cf.cam1.frame_id,
-            R=R1,
-            t_mm=t1,
-            ready=True,
-        )
-
-    cf.layout = LAYOUT_SCENE_TAPE
-    return cf

@@ -1,4 +1,4 @@
-path: C:/Users/Ceder-ALAB/Desktop/Jessica/Jessica/robotics/arm_state/dataset
+path: D:/Jessica/Jessica/robotics/arm_state/dataset
 train: images/train
 val: images/val
 names:

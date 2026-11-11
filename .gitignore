@@ -55,3 +55,18 @@ gdi/
 
 robotics/_git_backup_nested/
 
+
+# Digital twin: generated output and heavy data
+robotics/lab_scan/live/
+robotics/lab_scan/*.html
+robotics/lab_scan/*.ply
+robotics/lab_scan/*.csv
+robotics/lab_scan/*.npz
+robotics/lab_scan/walkthrough_*/
+robotics/lab_scan/drive_train/
+robotics/lab_scan/lab_map/splat.ply
+robotics/lab_scan/lab_map/colmap/
+robotics/Claude outputs/
+robotics/Log/
+*.mp4
+*.zip

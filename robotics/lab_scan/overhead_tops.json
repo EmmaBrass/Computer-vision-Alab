@@ -1,0 +1,41 @@
+{
+  "source": "usb",
+  "cameras_used": [
+    "cam1",
+    "cam2"
+  ],
+  "dropped": "cam0 side view, and surfaces that do not face the camera",
+  "alignment": "9x6 checkerboard corners, depth at each corner, cam2 moved into cam1",
+  "board_agreement_mm": 117.649909057331,
+  "board_corners": 54,
+  "board_corner_order": "as_found",
+  "board_span_px": {
+    "cam1": 33.001572929209104,
+    "cam2": 52.214262691678826
+  },
+  "cameras": {
+    "cam1": {
+      "depth_hw": [
+        480,
+        640
+      ],
+      "valid_depth_px": 54707,
+      "top_points": 19090,
+      "side_faces_dropped": 35617,
+      "photo_colored": true
+    },
+    "cam2": {
+      "depth_hw": [
+        480,
+        640
+      ],
+      "valid_depth_px": 53903,
+      "top_points": 18574,
+      "side_faces_dropped": 35329,
+      "photo_colored": true
+    }
+  },
+  "merged_ply": "D:\\Jessica\\Jessica\\robotics\\lab_scan\\overhead_tops.ply",
+  "viewer": "D:\\Jessica\\Jessica\\robotics\\lab_scan\\lab_scan.html",
+  "points_merged": 37664
+}

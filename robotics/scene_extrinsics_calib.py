@@ -28,7 +28,7 @@ from scene_extrinsics import (
     solve_scene_extrinsics,
     write_stereo_extrinsics,
 )
-from vial_3d_model import (
+from cam_geometry import (
     EXTRINSICS_PATH,
     default_intrinsics,
     is_extrinsics_placeholder,

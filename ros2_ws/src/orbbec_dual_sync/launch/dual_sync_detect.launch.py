@@ -1,8 +1,7 @@
-"""Launch dual Orbbec publishers + dual_view CV; vial detect OFF by default.
+"""Launch Orbbec publishers + dual_view CV (rack / arm overlay).
 
-sync_detect (YOLO / local vial locate / vial boxes) does NOT start unless
-enable_detect:=true. dual_view: furnace CV on cam0, rack CV on cam1.
-Optional cam0-only furnace overlay / cam1-only rack overlay windows.
+dual_view: arm/pose on cam0 (with optional center zoom), rack CV on cam1.
+Optional cam1-only rack overlay window.
 """
 
 from __future__ import annotations
@@ -23,11 +22,7 @@ def generate_launch_description() -> LaunchDescription:
     default_config = os.path.join(pkg_share, "config", "dual_sync.yaml")
 
     config = LaunchConfiguration("config")
-    preview = ParameterValue(LaunchConfiguration("preview"), value_type=bool)
-    use_yolo = ParameterValue(LaunchConfiguration("use_yolo"), value_type=bool)
-    enable_detect = LaunchConfiguration("enable_detect")
     enable_rack_overlay = LaunchConfiguration("enable_rack_overlay")
-    enable_furnace_overlay = LaunchConfiguration("enable_furnace_overlay")
     enable_dual_view = LaunchConfiguration("enable_dual_view")
     rack_state_mode = LaunchConfiguration("rack_state_mode")
     publish_rate_hz = ParameterValue(
@@ -53,6 +48,15 @@ def generate_launch_description() -> LaunchDescription:
         respawn=True,
         respawn_delay=3.0,
     )
+    cam2 = Node(
+        package="orbbec_dual_sync",
+        executable="orbbec_camera_publisher",
+        name="orbbec_cam2_pub",
+        output="screen",
+        parameters=[config],
+        respawn=True,
+        respawn_delay=3.0,
+    )
     dual_view = Node(
         package="orbbec_dual_sync",
         executable="orbbec_dual_view",
@@ -61,7 +65,6 @@ def generate_launch_description() -> LaunchDescription:
         parameters=[
             config,
             {
-                "enable_furnace_cv": True,
                 "enable_rack_cv": True,
                 "state_mode": rack_state_mode,
             },
@@ -69,16 +72,6 @@ def generate_launch_description() -> LaunchDescription:
         respawn=True,
         respawn_delay=3.0,
         condition=IfCondition(enable_dual_view),
-    )
-    furnace_overlay = Node(
-        package="orbbec_dual_sync",
-        executable="orbbec_furnace_overlay",
-        name="orbbec_furnace_overlay",
-        output="screen",
-        parameters=[config],
-        respawn=True,
-        respawn_delay=3.0,
-        condition=IfCondition(enable_furnace_overlay),
     )
     rack_overlay = Node(
         package="orbbec_dual_sync",
@@ -93,23 +86,6 @@ def generate_launch_description() -> LaunchDescription:
         respawn_delay=3.0,
         condition=IfCondition(enable_rack_overlay),
     )
-    sync_detect = Node(
-        package="orbbec_dual_sync",
-        executable="orbbec_sync_detect",
-        name="orbbec_sync_detect",
-        output="screen",
-        parameters=[
-            config,
-            {
-                "show_preview": preview,
-                "use_yolo": use_yolo,
-                "enable_detect": ParameterValue(enable_detect, value_type=bool),
-            },
-        ],
-        respawn=True,
-        respawn_delay=3.0,
-        condition=IfCondition(enable_detect),
-    )
 
     return LaunchDescription(
         [
@@ -122,29 +98,6 @@ def generate_launch_description() -> LaunchDescription:
                 ),
             ),
             DeclareLaunchArgument(
-                "preview",
-                default_value="true",
-                description=(
-                    "Show sync_detect preview when enable_detect:=true. "
-                    "Ignored when detect is off."
-                ),
-            ),
-            DeclareLaunchArgument(
-                "use_yolo",
-                default_value="false",
-                description=(
-                    "Only used when enable_detect:=true. YOLO stays opt-in."
-                ),
-            ),
-            DeclareLaunchArgument(
-                "enable_detect",
-                default_value="false",
-                description=(
-                    "Start orbbec_sync_detect (vial YOLO/local locate). "
-                    "DEFAULT false. Opt-in: enable_detect:=true"
-                ),
-            ),
-            DeclareLaunchArgument(
                 "enable_rack_overlay",
                 default_value="true",
                 description=(
@@ -153,18 +106,10 @@ def generate_launch_description() -> LaunchDescription:
                 ),
             ),
             DeclareLaunchArgument(
-                "enable_furnace_overlay",
-                default_value="false",
-                description=(
-                    "Optional cam0-only furnace overlay window (dual_view "
-                    "already draws furnace CV on the left pane). DEFAULT false."
-                ),
-            ),
-            DeclareLaunchArgument(
                 "enable_dual_view",
                 default_value="true",
                 description=(
-                    "Show side-by-side cam0|cam1 with furnace CV on cam0 and "
+                    "Show side-by-side cam0|cam1 with arm/pose on cam0 and "
                     "rack OPEN/CLOSED CV on cam1. DEFAULT true."
                 ),
             ),
@@ -186,26 +131,16 @@ def generate_launch_description() -> LaunchDescription:
             ),
             LogInfo(
                 msg=(
-                    "ROS dual publishers + DUAL VIEW "
-                    "(cam0+furnace CV | cam1+rack CV). "
-                    "Window after ~38s; furnace slots from furnace.json on "
-                    "cam0; rack OPEN/CLOSED on cam1. "
-                    "Disable: enable_dual_view:=false / "
-                    "enable_furnace_cv:=false (yaml). "
-                    "Optional cam0-only window: enable_furnace_overlay:=true. "
-                    "Pin rack label: rack_state_mode:=force_closed|force_open"
+                    "ROS publishers + DUAL VIEW "
+                    "(cam0 arm/pose zoom | cam1 rack CV). "
+                    "Pin rack label: rack_state_mode:=force_closed|force_open. "
+                    "Tune zoom in dual_sync.yaml: cam0_zoom"
                 )
             ),
             cam0,
             TimerAction(period=20.0, actions=[cam1]),
-            # After both publishers; dual view needs cam0+cam1 topics.
-            # dual_view after both pubs are streaming (cam1 opens at 20s).
-            TimerAction(period=38.0, actions=[dual_view]),
-            # After cam0 publisher; furnace overlay only needs cam0 topic.
-            TimerAction(period=12.0, actions=[furnace_overlay]),
-            # After cam1 publisher starts; overlay only needs the topic.
+            TimerAction(period=36.0, actions=[cam2]),
+            TimerAction(period=52.0, actions=[dual_view]),
             TimerAction(period=28.0, actions=[rack_overlay]),
-            # Only scheduled when enable_detect:=true.
-            TimerAction(period=40.0, actions=[sync_detect]),
         ]
     )

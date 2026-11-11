@@ -1,4 +1,4 @@
-"""Log rack OPEN <-> CLOSED transitions (and optional furnace later).
+"""Log rack OPEN <-> CLOSED transitions.
 
 Subscribes to cam1 color, classifies with the same RackStateJudge used by the
 ROS overlay, and appends a line only when the *stable* state changes.

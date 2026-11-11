@@ -1,0 +1,11 @@
+{
+  "name": "Jeeves (UR5e)",
+  "base_m": [
+    0.24,
+    0.41,
+    1.04
+  ],
+  "reach_m": 1.0,
+  "seed_radius_m": 0.22,
+  "note": "base_m = top of the arm's base in the lab map, measured from cam0 and cam1 (they agree within ~8 cm)"
+}

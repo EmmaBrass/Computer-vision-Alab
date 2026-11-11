@@ -58,6 +58,8 @@ def load_ur_state(robotics: Optional[Path] = None):
         fk_rack_proximity,
         load_fk_config,
         load_joints,
+        teachpad_fk_residual_mm,
+        teachpad_tcp_mm,
         ur_base_to_vision_mm,
         write_example_files,
     )
@@ -67,12 +69,22 @@ def load_ur_state(robotics: Optional[Path] = None):
     q, model, source = load_joints(cfg)
     pts_ur = fk_joint_positions_mm(q, model=model)
     pts_vis = ur_base_to_vision_mm(pts_ur, cfg)
+    tcp = teachpad_tcp_mm(cfg)
+    tcp_err = None
+    if tcp is not None:
+        try:
+            tcp_err = float(teachpad_fk_residual_mm(q, tcp, model=model))
+        except Exception:
+            tcp_err = None
     return {
         "cfg": cfg,
         "q": q,
         "model": model,
         "source": source,
         "pts_vision_mm": pts_vis,
+        "pts_ur_mm": pts_ur,
+        "teachpad_tcp_mm": tcp,
+        "teachpad_tcp_err_mm": tcp_err,
         "rack_hits": fk_rack_proximity(pts_vis, cfg),
     }
 
@@ -116,6 +128,25 @@ def draw_ur_skeleton(
     rack_hits: Optional[list[tuple[int, float]]] = None,
     source: str = "",
     model: str = "",
+    pts_upright_mm: Optional[np.ndarray] = None,
+    check_ok: Optional[bool] = None,
+    check_mm: Optional[float] = None,
+    check_unit: str = "mm",
+    base_anchor_uv: Optional[tuple[float, float]] = None,
+    img_deg: float = 0.0,
+    img_scale: float = 1.0,
+    blue_uv: Optional[np.ndarray] = None,
+    has_tool: bool = False,
+    tag_uv: Optional[list] = None,
+    pts_fk_mm: Optional[np.ndarray] = None,
+    cam: str = "",
+    calibrated: bool = False,
+    fy: Optional[float] = None,
+    cx: Optional[float] = None,
+    cy: Optional[float] = None,
+    K=None,
+    dist=None,
+    teachpad_tcp_err_mm: Optional[float] = None,
 ) -> np.ndarray:
     """Project FK joints into the camera image and draw a stick figure."""
     out = bgr
@@ -179,7 +210,36 @@ def draw_ur_skeleton(
                 cv2.LINE_AA,
             )
 
-    hud = f"UR {model} [{source}]"
+    if check_unit == "tag":
+        hud = f"KIN on {int(check_mm or 0)} tags · UR7e"
+        hud_col = (80, 220, 80)
+    elif check_ok is True:
+        unit = "px" if check_unit == "px" else "mm"
+        hud = (
+            f"KIN CHECK ok {check_mm:.0f}{unit}"
+            if check_mm is not None
+            else "KIN CHECK ok"
+        )
+        hud_col = (80, 220, 80)
+    elif check_ok is False:
+        unit = "px" if check_unit == "px" else "mm"
+        extra = f" {check_mm:.0f}{unit}" if check_mm is not None else ""
+        hud = f"KIN CHECK off{extra} — blue disagrees"
+        hud_col = (0, 140, 255)
+    else:
+        hud = f"UR {model} kinematics (no blue check)"
+        hud_col = (200, 180, 0)
+    if source:
+        token = source.split(":")[0].split()[0]
+        if token.startswith("teachpad-live") or token.startswith("rtde-live"):
+            token = "TEACHPAD"
+        elif token.startswith("teachpad-hold") or token.startswith("rtde-hold"):
+            token = "HOLD"
+        elif token.startswith("photo"):
+            token = "PHOTO"
+        hud = f"{hud} [{token}]"
+    if teachpad_tcp_err_mm is not None and math.isfinite(float(teachpad_tcp_err_mm)):
+        hud += f"  TCPΔ{float(teachpad_tcp_err_mm):.1f}mm"
     if rack_hits:
         worst = min(rack_hits, key=lambda x: x[1])
         hud += f"  RACK FK{worst[0]} gap={worst[1]:.0f}mm"

@@ -7,7 +7,7 @@ says those joints are. S writes one pose per camera into cell_frames.json.
 Later starts of the viewer read that file. Run this again only if a camera
 is physically moved.
 
-    cd C:\\Users\\Ceder-ALAB\\Desktop\\Jessica\\Jessica\\robotics
+    cd D:\\Jessica\\Jessica\\robotics
     save_arm_camera.cmd
 
 SPACE stores this pause. S saves. C clears the stored pauses. Q quits.
@@ -304,7 +304,7 @@ def live() -> int:
         from sensor_msgs.msg import CameraInfo, Image
     except Exception as exc:
         print("ROS is not available in this window.")
-        print(r"cd C:\Users\Ceder-ALAB\Desktop\Jessica\Jessica\robotics; .\save_arm_camera.cmd")
+        print(r"cd D:\Jessica\Jessica\robotics; .\save_arm_camera.cmd")
         print(exc)
         return 1
 

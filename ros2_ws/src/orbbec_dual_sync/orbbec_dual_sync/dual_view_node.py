@@ -1,8 +1,16 @@
-"""Live side-by-side preview: cam0 furnace CV | cam1 rack OPEN/CLOSED CV.
+"""Live side-by-side preview: cam0 arm/pose CV | cam1 rack OPEN/CLOSED CV.
 
-Subscribes only — does not open CAP_OBSENSOR. Furnace overlay on the left pane
-(same helpers as furnace_agents / orbbec_furnace_overlay). Rack overlay on the
-right pane (same as orbbec_rack_overlay).
+Subscribes only — does not open CAP_OBSENSOR. Rack overlay on the right pane
+(same as orbbec_rack_overlay). Optional digital center-zoom on cam0.
+
+Reading map (this file is the viewer hub):
+  - __init__ / subscriptions: ROS params and topics
+  - _paint_cam*: per-camera overlays (rack, blues, tags, UR FK)
+  - _overlay_ur_fk / online pose: stick figure + OnlineCamPose
+  - _on_timer: compose the three panes + depth row and show the preview
+
+Related modules: online_cam_pose.py, ur_skeleton_draw.py, blue_joint_tracks.py,
+baby_blue_draw.py, cell_frames.py, camera_publisher.py.
 """
 
 from __future__ import annotations
@@ -25,10 +33,6 @@ from rclpy.qos import (
 from sensor_msgs.msg import Image
 
 from .camera_path import ensure_camera_on_path
-from .furnace_overlay_draw import (
-    default_furnace_json,
-    paint_furnace_overlay,
-)
 from .image_codec import imgmsg_to_numpy
 from .preview_gui import PreviewWindow
 from .rack_overlay_draw import (
@@ -68,6 +72,20 @@ def _placeholder(lines: list[str], h: int = 480, w: int = 640) -> np.ndarray:
             cv2.LINE_AA,
         )
     return img
+
+
+def center_zoom(bgr: np.ndarray, zoom: float) -> np.ndarray:
+    """Digital zoom toward image center; ``zoom`` 1.0 = no crop."""
+    z = float(zoom)
+    if bgr is None or z <= 1.001:
+        return bgr
+    h, w = bgr.shape[:2]
+    crop_w = max(1, int(round(w / z)))
+    crop_h = max(1, int(round(h / z)))
+    x0 = max(0, (w - crop_w) // 2)
+    y0 = max(0, (h - crop_h) // 2)
+    crop = bgr[y0 : y0 + crop_h, x0 : x0 + crop_w]
+    return cv2.resize(crop, (w, h), interpolation=cv2.INTER_LINEAR)
 
 
 def compose_side_by_side(
@@ -112,17 +130,14 @@ class DualViewNode(Node):
         self.declare_parameter("cam1_depth_topic", "/orbbec/cam1/depth/image_raw")
         self.declare_parameter("max_height", 480)
         self.declare_parameter("refresh_hz", 15.0)
+        # Digital zoom on cam0 display (pose/overlays still run on full frame).
+        self.declare_parameter("cam0_zoom", 1.0)
         # Cam1 rack OPEN/CLOSED CV (same as orbbec_rack_overlay).
         self.declare_parameter("enable_rack_cv", True)
         self.declare_parameter("rack_json", "")
         self.declare_parameter("state_mode", "classify")
         self.declare_parameter("force_state", "CLOSED")
         self.declare_parameter("classify_every_n", 2)
-        # Cam0 furnace CV (same helpers as furnace_agents / orbbec_furnace_overlay).
-        self.declare_parameter("enable_furnace_cv", True)
-        self.declare_parameter("furnace_json", "")
-        self.declare_parameter("furnace_match_live", True)
-        self.declare_parameter("furnace_match_every_n", 2)
         # YOLO arm detector (arm_state/runs/arm_detect/weights/best.pt)
         self.declare_parameter("enable_arm_cv", True)
         self.declare_parameter("arm_weights", "")
@@ -144,6 +159,18 @@ class DualViewNode(Node):
         self.declare_parameter("ur_fk_draw", True)
         self.declare_parameter("ur_fk_confirm", True)
         self.declare_parameter("ur_fk_rack_alert", True)
+        # Online per-camera pose from arm tags + blue caps over many frames.
+        # Legacy tag-fitting stays available behind this flag (default off).
+        self.declare_parameter("use_legacy_tag_fit", False)
+        self.declare_parameter("online_use_blue", True)
+        # Blues + live UR FK 3D model help when joint tags are occluded (folded arm).
+        self.declare_parameter("online_use_blue_in_pnp", True)
+        self.declare_parameter("online_save_cell", False)
+        self.declare_parameter("online_ignore_saved_pose", True)
+        self.declare_parameter("online_reset", False)
+        self.declare_parameter("cam0_info_topic", "/orbbec/cam0/color/camera_info")
+        self.declare_parameter("cam1_info_topic", "/orbbec/cam1/color/camera_info")
+        self.declare_parameter("cam2_info_topic", "/orbbec/cam2/color/camera_info")
 
         t0 = str(self.get_parameter("cam0_color_topic").value)
         t1 = str(self.get_parameter("cam1_color_topic").value)
@@ -152,18 +179,12 @@ class DualViewNode(Node):
         self.max_height = int(self.get_parameter("max_height").value)
         hz = float(self.get_parameter("refresh_hz").value)
         period = 1.0 / max(hz, 1.0)
+        self.cam0_zoom = max(1.0, float(self.get_parameter("cam0_zoom").value))
 
         self.enable_rack_cv = bool(self.get_parameter("enable_rack_cv").value)
         self.state_mode = str(self.get_parameter("state_mode").value).strip().lower()
         self.force_state = str(self.get_parameter("force_state").value).strip().upper()
         self.classify_every_n = max(1, int(self.get_parameter("classify_every_n").value))
-
-        self.enable_furnace_cv = bool(self.get_parameter("enable_furnace_cv").value)
-        self.furnace_match_live = bool(self.get_parameter("furnace_match_live").value)
-        self.furnace_match_every_n = max(
-            1, int(self.get_parameter("furnace_match_every_n").value)
-        )
-        self.furnace_json: Optional[Path] = None
 
         self.enable_arm_cv = bool(self.get_parameter("enable_arm_cv").value)
         arm_w = str(self.get_parameter("arm_weights").value).strip()
@@ -208,7 +229,6 @@ class DualViewNode(Node):
         self._fuse1: Optional[dict] = None
         self._joint_bank = None
         self._cell_frames = None
-        self._furnace_slots: list[tuple[int, int, int, int, int]] = []
         self._latest_depth0: Optional[np.ndarray] = None
         self._latest_depth1: Optional[np.ndarray] = None
 
@@ -220,6 +240,7 @@ class DualViewNode(Node):
         self._recv1 = 0
         self._cam0_seq = 0
         self._cam1_seq = 0
+        self._cam2_seq = 0
         self._last_state = "CLOSED"
         self._started = time.monotonic()
         self._warned_empty = False
@@ -232,7 +253,6 @@ class DualViewNode(Node):
 
         need_robotics = (
             self.enable_rack_cv
-            or self.enable_furnace_cv
             or self.enable_arm_cv
             or self.enable_blue_cv
             or self.enable_ur_fk
@@ -277,13 +297,22 @@ class DualViewNode(Node):
                 f"merge={self.blue_merge_mm:.0f}mm match={self.blue_match_mm:.0f}mm"
             )
             try:
-                from .cell_frames import default_cell_frames_path, load_cell_frames
+                from .cell_frames import (
+                    LAYOUT_OPPOSITE_180,
+                    LAYOUT_PERPENDICULAR,
+                    apply_opposite_180_layout,
+                    apply_perpendicular_layout,
+                    default_cell_frames_path,
+                    load_cell_frames,
+                )
 
                 cpath = default_cell_frames_path(self._robotics)
                 self._cell_frames = load_cell_frames(cpath)
                 from .cell_frames import LAYOUT_PERPENDICULAR, apply_perpendicular_layout
 
-                if self._cell_frames.layout == LAYOUT_PERPENDICULAR:
+                if self._cell_frames.layout == LAYOUT_OPPOSITE_180:
+                    apply_opposite_180_layout(self._cell_frames)
+                elif self._cell_frames.layout == LAYOUT_PERPENDICULAR:
                     apply_perpendicular_layout(self._cell_frames)
                 self.get_logger().info(
                     f"ur_base cell_frames: {cpath} "
@@ -291,7 +320,8 @@ class DualViewNode(Node):
                     f"bootstrap={self._cell_frames.bootstrap_from_blue_base} "
                     f"cam0_ready={self._cell_frames.cam0.ready} "
                     f"cam1_ready={self._cell_frames.cam1.ready} "
-                    f"(cam0⊥cam1 90deg — pedestal blue = origin)"
+                    f"cam2_ready={self._cell_frames.cam2.ready} "
+                    f"(cam1↔cam2 ~180 high-down; cam0 separate side/close)"
                 )
             except Exception as exc:
                 self._cell_frames = None
@@ -339,40 +369,17 @@ class DualViewNode(Node):
                     f"Rack CV disabled (could not load ROI/templates): {exc}"
                 )
 
-        if self.enable_furnace_cv:
-            try:
-                if self._robotics is None:
-                    raise FileNotFoundError("robotics root unavailable")
-                furnace_raw = str(self.get_parameter("furnace_json").value).strip()
-                self.furnace_json = (
-                    Path(furnace_raw) if furnace_raw else default_furnace_json(self._robotics)
-                )
-                if not self.furnace_json.is_file():
-                    raise FileNotFoundError(
-                        f"furnace.json not found: {self.furnace_json}"
-                    )
-                self.get_logger().info(
-                    f"Furnace CV ON cam0 pane: match_live={self.furnace_match_live} "
-                    f"json={self.furnace_json}"
-                )
-            except Exception as exc:
-                self.enable_furnace_cv = False
-                self.furnace_json = None
-                self.get_logger().error(
-                    f"Furnace CV disabled (could not load furnace.json): {exc}"
-                )
-
         title_bits = ["cam0"]
-        if self.enable_furnace_cv:
-            title_bits[0] = "cam0 + furnace CV"
+        if self.cam0_zoom > 1.001:
+            title_bits[0] = f"cam0 zoom {self.cam0_zoom:.1f}x"
         title_bits.append("cam1 + rack CV" if self.enable_rack_cv else "cam1")
         self._preview = PreviewWindow(
             f"orbbec_dual_view ({' | '.join(title_bits)})",
             max_height=max(self.max_height, 480),
         )
         extras = []
-        if self.enable_furnace_cv:
-            extras.append("furnace boxes on cam0")
+        if self.cam0_zoom > 1.001:
+            extras.append(f"cam0 center zoom {self.cam0_zoom:.1f}x")
         if self.enable_rack_cv:
             extras.append("rack OPEN/CLOSED on cam1")
         if self.enable_arm_cv:
@@ -423,45 +430,10 @@ class DualViewNode(Node):
 
     def _paint_cam0_cv(self, bgr: np.ndarray) -> np.ndarray:
         self._cam0_seq += 1
-        if self.enable_furnace_cv:
-            do_match = self.furnace_match_live and (
-                self._cam0_seq % self.furnace_match_every_n == 0
-                or self._latest0_cv is None
-            )
-            try:
-                from .furnace_overlay_draw import (
-                    draw_furnace_overlay_on_frame,
-                    resolve_slots_for_frame,
-                )
-
-                slots = resolve_slots_for_frame(
-                    bgr,
-                    robotics_root=self._robotics,
-                    furnace_json=self.furnace_json,
-                    match_live=do_match,
-                )
-                self._furnace_slots = [
-                    (int(s.id), int(s.x), int(s.y), int(s.w), int(s.h)) for s in slots
-                ]
-                view = draw_furnace_overlay_on_frame(
-                    bgr,
-                    slots,
-                    robotics_root=self._robotics,
-                    corner_tag="cam0 + furnace + arm",
-                )
-            except Exception as exc:
-                self.get_logger().warn(f"furnace resolve failed: {exc}")
-                self._furnace_slots = []
-                view = paint_furnace_overlay(
-                    bgr,
-                    robotics_root=self._robotics,
-                    furnace_json=self.furnace_json,
-                    match_live=do_match,
-                    corner_tag="cam0 + furnace + arm",
-                )
-        else:
-            self._furnace_slots = []
-            view = _label(bgr, "cam0")
+        tag = "cam0"
+        if self.cam0_zoom > 1.001:
+            tag = f"cam0 zoom {self.cam0_zoom:.1f}x"
+        view = _label(bgr, tag)
         view = self._overlay_arm_on(view, bgr, cam="cam0")
         return self._overlay_blue_on(view, bgr, cam="cam0")
 
@@ -469,13 +441,29 @@ class DualViewNode(Node):
         self, decorated: np.ndarray, raw: np.ndarray, *, cam: str
     ) -> np.ndarray:
         """HSV baby-blue → JointBank tracks (J0..J5) with Kalman coast."""
-        alert_attr = "_blue_alert0" if cam == "cam0" else "_blue_alert1"
+        alert_attr = {
+            "cam0": "_blue_alert0",
+            "cam1": "_blue_alert1",
+            "cam2": "_blue_alert2",
+        }.get(cam, "_blue_alert1")
         if not self.enable_blue_cv:
             setattr(self, alert_attr, False)
-            return decorated
-        seq = self._cam0_seq if cam == "cam0" else self._cam1_seq
-        cache_attr = "_blue_boxes0" if cam == "cam0" else "_blue_boxes1"
-        depth = self._latest_depth0 if cam == "cam0" else self._latest_depth1
+            return self._draw_fk_monitor(decorated, cam)
+        seq = {
+            "cam0": self._cam0_seq,
+            "cam1": self._cam1_seq,
+            "cam2": int(getattr(self, "_cam2_seq", 0)),
+        }.get(cam, self._cam1_seq)
+        cache_attr = {
+            "cam0": "_blue_boxes0",
+            "cam1": "_blue_boxes1",
+            "cam2": "_blue_boxes2",
+        }.get(cam, "_blue_boxes1")
+        depth = {
+            "cam0": self._latest_depth0,
+            "cam1": self._latest_depth1,
+            "cam2": getattr(self, "_latest_depth2", None),
+        }.get(cam)
         if seq % self.blue_every_n == 0 or getattr(self, cache_attr) is None:
             try:
                 from .baby_blue_draw import find_baby_blue_boxes
@@ -771,6 +759,25 @@ class DualViewNode(Node):
                 rack_hits=rack_hits,
                 source=state["source"],
                 model=state["model"],
+                pts_upright_mm=pts_fk if calibrated else state.get("pts_upright_mm"),
+                check_ok=state.get("check_ok"),
+                check_mm=state.get("check_mm"),
+                check_unit=str(state.get("check_unit") or "mm"),
+                base_anchor_uv=anchor,
+                img_deg=img_deg,
+                img_scale=img_scale,
+                blue_uv=state.get("blue_uv"),
+                has_tool=bool(state.get("has_tool")),
+                tag_uv=tag_uv,
+                pts_fk_mm=pts_fk,
+                cam=cam,
+                calibrated=calibrated,
+                fy=fy_draw,
+                cx=cx_draw,
+                cy=cy_draw,
+                teachpad_tcp_err_mm=state.get("teachpad_tcp_err_mm"),
+                K=K_draw,
+                dist=dist_draw,
             )
         fk_alerts = fk_alerts_as_proximity(rack_hits) if rack_hits else []
         guide = None
@@ -786,17 +793,110 @@ class DualViewNode(Node):
                 self.get_logger().error(f"[{cam}] {guide}")
         return out, fk_alerts, guide
 
+    def _update_arm_speed(self, q) -> None:
+        """Compute joint speed once per new robot reading; cameras only read it."""
+        if q is None:
+            return
+        try:
+            q_now = np.asarray(q, dtype=np.float64).reshape(-1)
+        except Exception:
+            return
+        now = time.monotonic()
+        speed = None
+        if (
+            self._last_q is not None
+            and self._last_q.shape == q_now.shape
+            and (now - self._last_q_t) > 1e-3
+        ):
+            peak = 0.0
+            dt = now - self._last_q_t
+            for i in range(q_now.shape[0]):
+                d = abs(float(q_now[i]) - float(self._last_q[i])) / dt
+                if d > peak:
+                    peak = d
+            speed = peak
+        self._last_q = q_now
+        self._last_q_t = now
+        self._arm_speed = speed
+
+    def _arm_joint_speed(self, q) -> Optional[float]:
+        """Stored max joint speed (rad/s). Does not update _last_q."""
+        _ = q
+        return getattr(self, "_arm_speed", None)
+
+    def _maybe_reset_online(self) -> None:
+        """Clear every OnlineCamPose when R is pressed or online_reset is True."""
+        want = False
+        try:
+            want = bool(self.get_parameter("online_reset").value)
+        except Exception:
+            want = False
+        prev = getattr(self, "_preview", None)
+        if prev is not None and getattr(prev, "reset_requested", False):
+            want = True
+            prev.reset_requested = False
+        if not want:
+            return
+        for op in self._online_pose.values():
+            try:
+                op.reset()
+            except Exception:
+                pass
+        try:
+            from rclpy.parameter import Parameter
+
+            self.set_parameters(
+                [Parameter("online_reset", Parameter.Type.BOOL, False)]
+            )
+        except Exception:
+            pass
+        self.get_logger().info("OnlineCamPose reset (buffer + pose cleared)")
+
+    def _draw_online_pose_hud(self, out: np.ndarray, cam: str, op) -> np.ndarray:
+        """Per-camera online-pose status: buffer pairs, distinct poses, error."""
+        err = op.mean_px
+        err_txt = "--" if not (err == err) else f"{err:.1f}px"  # NaN-safe
+        err3 = getattr(op, "mean_3d_mm", float("nan"))
+        err3_txt = "--" if not (err3 == err3) else f"{err3:.0f}mm"
+        n3 = int(getattr(op, "n_3d", 0))
+        mode = str(getattr(op, "last_mode", "") or "")
+        state_txt = "ACC" if op.last_accepted else ("pose" if op.have_pose else "solving")
+        if mode:
+            state_txt = f"{state_txt}/{mode}"
+        line = (
+            f"online {cam}: teachpad-FK pairs {op.n_pairs} poses {op.n_poses} "
+            f"3d {n3} err {err_txt}/{err3_txt} [{state_txt}]"
+        )
+        color = (0, 220, 0) if op.last_accepted else (0, 210, 210)
+        y = out.shape[0] - 40
+        cv2.putText(
+            out, line, (12, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 3, cv2.LINE_AA
+        )
+        cv2.putText(
+            out, line, (12, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1, cv2.LINE_AA
+        )
+        return out
+
     def _overlay_arm_on(
         self, decorated: np.ndarray, raw: np.ndarray, *, cam: str
     ) -> np.ndarray:
         """Detect on raw frame, then draw boxes onto the decorated overlay."""
         if not self.enable_arm_cv or self._robotics is None:
             return decorated
-        seq = self._cam0_seq if cam == "cam0" else self._cam1_seq
-        cache_attr = "_arm_boxes0" if cam == "cam0" else "_arm_boxes1"
+        seq = {
+            "cam0": self._cam0_seq,
+            "cam1": self._cam1_seq,
+            "cam2": int(getattr(self, "_cam2_seq", 0)),
+        }.get(cam, self._cam1_seq)
+        cache_attr = {
+            "cam0": "_arm_boxes0",
+            "cam1": "_arm_boxes1",
+            "cam2": "_arm_boxes2",
+        }.get(cam, "_arm_boxes1")
         if not hasattr(self, "_arm_boxes0"):
             self._arm_boxes0 = None
             self._arm_boxes1 = None
+            self._arm_boxes2 = None
         if seq % self.arm_every_n == 0 or getattr(self, cache_attr) is None:
             try:
                 from .arm_overlay_draw import default_arm_weights, get_worker
@@ -850,6 +950,13 @@ class DualViewNode(Node):
             view = _label(bgr, "cam1")
         view = self._overlay_arm_on(view, bgr, cam="cam1")
         return self._overlay_blue_on(view, bgr, cam="cam1")
+
+    def _paint_cam2_cv(self, bgr: np.ndarray) -> np.ndarray:
+        # Opposite high-down partner of cam1 (not cam0).
+        self._cam2_seq = int(getattr(self, "_cam2_seq", 0)) + 1
+        view = _label(bgr, "cam2 high-down (opp cam1)")
+        view = self._overlay_arm_on(view, bgr, cam="cam2")
+        return self._overlay_blue_on(view, bgr, cam="cam2")
 
     def _on_depth0(self, msg: Image) -> None:
         try:
@@ -1088,6 +1195,8 @@ class DualViewNode(Node):
             )
         try:
             left = self._latest0_cv if self._latest0_cv is not None else self._latest0
+            if left is not None and self.cam0_zoom > 1.001:
+                left = center_zoom(left, self.cam0_zoom)
             right = self._latest1_cv if self._latest1_cv is not None else self._latest1
             frame = compose_side_by_side(
                 left,
@@ -1098,6 +1207,28 @@ class DualViewNode(Node):
                 left_already_labeled=self._latest0_cv is not None,
                 right_already_labeled=self._latest1_cv is not None,
             )
+            depth0 = self._depth_map_bgr(self._latest_depth0, "cam0 depth")
+            if depth0 is not None and self.cam0_zoom > 1.001:
+                depth0 = center_zoom(depth0, self.cam0_zoom)
+            depth_row = compose_side_by_side(
+                depth0,
+                self._depth_map_bgr(self._latest_depth1, "cam1 depth"),
+                max_height=max(160, int(self.max_height) // 2),
+                left_already_labeled=True,
+                right_already_labeled=True,
+            )
+            third = self._latest2_cv if self._latest2_cv is not None else self._latest2
+            if third is None:
+                third = _placeholder(
+                    ["waiting cam2…", self._status_line(self._recv2)]
+                )
+            frame = _attach_pane(frame, third)
+            depth_row = _attach_pane(
+                depth_row, self._depth_map_bgr(self._latest_depth2, "cam2 depth")
+            )
+            if depth_row.shape[1] != frame.shape[1]:
+                depth_row = cv2.resize(depth_row, (frame.shape[1], depth_row.shape[0]))
+            frame = cv2.vconcat([frame, depth_row])
             if self._blue_alert0 or self._blue_alert1:
                 # Extra full-window red signal so it's impossible to miss
                 h, w = frame.shape[:2]

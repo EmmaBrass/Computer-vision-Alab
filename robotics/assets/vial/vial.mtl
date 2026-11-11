@@ -1,9 +1,0 @@
-newmtl cup_clear
-Kd 0.55 0.72 0.82
-d 0.35
-illum 2
-
-newmtl lid_white
-Kd 0.96 0.96 0.97
-d 1.0
-illum 2

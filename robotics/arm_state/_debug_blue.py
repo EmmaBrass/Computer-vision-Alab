@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 
 img = cv2.imread(
-    r"C:\Users\Ceder-ALAB\Desktop\Jessica\Jessica\robotics\arm_state\live_cam0.png"
+    r"D:\Jessica\Jessica\robotics\arm_state\live_cam0.png"
 )
 hs, ws = img.shape[:2]
 x1, y1, x2, y2 = 78.87, 108.07, 439.78, 353.51

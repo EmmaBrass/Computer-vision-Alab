@@ -1,6 +1,6 @@
-﻿import cv2, numpy as np
+import cv2, numpy as np
 from pathlib import Path
-p = Path(r"C:\Users\Ceder-ALAB\Desktop\Jessica\Jessica\robotics\arm_state\captures\cam0")
+p = Path(r"D:\Jessica\Jessica\robotics\arm_state\captures\cam0")
 paths = sorted(p.glob("cam0_*.png"))
 # compare last stamp batch vs first of previous
 stamps = {}

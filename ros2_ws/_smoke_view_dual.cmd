@@ -1,5 +1,5 @@
 @echo off
-cd /d C:\Users\Ceder-ALAB\Desktop\Jessica\Jessica\ros2_ws
+cd /d D:\Jessica\Jessica\ros2_ws
 call view_dual_cameras.cmd --help 2>nul
 REM instead just validate env portion
 call _ros_env.cmd
